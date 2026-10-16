@@ -9,6 +9,7 @@ import {
   buildInterfaceBuilderAnalysis,
   interfaceBuilderLimitsSchema,
 } from "../apple/interfaceBuilderGraph.js";
+import { inspectNativeDispatchMetadata } from "./objcSwiftMetadata.js";
 
 const evidence = [
   {
@@ -326,6 +327,52 @@ describe("Interface Builder dispatch joins", () => {
     expect(joined.edges).not.toContainEqual(
       expect.objectContaining({ to: "native:function:0x9999" }),
     );
+  });
+});
+
+describe("address-less symbol dispatch joins", () => {
+  it("leaves dispatch unresolved for a method symbol named without an address", () => {
+    const ui = buildInterfaceBuilderAnalysis({
+      targetSha256: "b".repeat(64),
+      toolVersion: "test",
+      documents: [
+        {
+          relativePath: "Main.storyboardc/scene.nib/objects.nib",
+          archiveSha256: "c".repeat(64),
+          documentKind: "storyboard_scene",
+          raw: {
+            "com.apple.ibtool.document.objects": {
+              controller: { customClass: "BuildViewController" },
+              button: { class: "UIButton", title: "Build" },
+            },
+            "com.apple.ibtool.document.connections": {
+              button: [
+                {
+                  type: "action",
+                  label: "buildTapped:",
+                  destinationId: "controller",
+                },
+              ],
+            },
+          },
+        },
+      ],
+      limits: interfaceBuilderLimitsSchema.parse({}),
+    });
+    const joined = joinInterfaceBuilderDispatch(
+      ui.graph,
+      inspectNativeDispatchMetadata([
+        { address: "", name: "-[BuildViewController buildTapped:]" },
+      ]),
+    );
+    expect(joined.edges).toContainEqual(
+      expect.objectContaining({
+        relation: "objc_dispatch",
+        resolution: "unresolved",
+        to: null,
+      }),
+    );
+    expect(joined.nodes.map(({ id }) => id)).not.toContain("native:function:");
   });
 });
 

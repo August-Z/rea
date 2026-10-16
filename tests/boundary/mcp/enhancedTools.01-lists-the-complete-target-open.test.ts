@@ -104,6 +104,8 @@ const fixturePort = (): AnalysisOperationPort => ({
               "0x11": "_OBJC_CLASS_$_Fixture",
               "0x12": "_OBJC_PROTOCOL_$_FixtureDelegate",
               "0x13": "entry",
+              // A provider may name a symbol without an address.
+              "": "$s4Test7MyClassC",
             }).map((entry) => ({
               ...entry,
               symbol: {
@@ -409,6 +411,17 @@ describe("enhanced MCP tools", () => {
         version: "1",
       },
       result: {
+        swift_symbols: [
+          {
+            mangled_name: "$s4Test7MyClassC",
+            address: null,
+            evidence: [
+              expect.objectContaining({
+                location: { address: null, file_offset: null },
+              }),
+            ],
+          },
+        ],
         coverage: expect.arrayContaining([
           expect.objectContaining({ facet: "objc_dispatch_implementations" }),
         ]),

@@ -224,7 +224,8 @@ export const relativePointerSchema = z.strictObject({
 /** A raw Swift-mangled symbol when a provider has not decoded its metadata. */
 export const swiftSymbolSchema = z.strictObject({
   mangled_name: z.string().min(1),
-  address: z.string().min(1),
+  /** Null when the provider inventory names the symbol without an address. */
+  address: z.string().min(1).nullable(),
   decode: nativeMetadataDecodeSchema,
   evidence: z.array(nativeMetadataEvidenceSchema).min(1),
 });
@@ -333,7 +334,7 @@ export const inspectNativeDispatchMetadata = (
   names: readonly { readonly address: string; readonly name: string }[],
   maxRecords = 5_000,
 ): ObjcSwiftMetadata => {
-  const symbolEvidence = (name: string, address: string) => [
+  const symbolEvidence = (name: string, address: string | null) => [
     {
       kind: "symbol" as const,
       description: `Provider symbol ${name}`,
@@ -346,14 +347,17 @@ export const inspectNativeDispatchMetadata = (
   const implementations = new Map<string, ObjcDispatchImplementation>();
   const swiftSymbols: SwiftSymbol[] = [];
 
-  const examinedNames = names.slice(0, maxRecords);
-  for (const entry of examinedNames) {
-    const classMatch = /(?:OBJC_CLASS_|OBJC_METACLASS_)\$_([^\s]+)/u.exec(
-      entry.name,
-    );
+  // Provider inventories may name a symbol without an address; keep the name
+  // and make the missing location explicit.
+  const examinedNames = names.slice(0, maxRecords).map((entry) => ({
+    name: entry.name,
+    address: entry.address === "" ? null : entry.address,
+  }));
+  for (const { name, address } of examinedNames) {
+    const classMatch = /(?:OBJC_CLASS_|OBJC_METACLASS_)\$_([^\s]+)/u.exec(name);
     if (classMatch?.[1] !== undefined) classNames.add(classMatch[1]);
 
-    const methodMatch = /^([+-])\[([^\s\]]+)\s+([^\]]+)\]$/u.exec(entry.name);
+    const methodMatch = /^([+-])\[([^\s\]]+)\s+([^\]]+)\]$/u.exec(name);
     if (methodMatch?.[1] !== undefined && methodMatch[2] && methodMatch[3]) {
       const methodType = methodMatch[1] === "+" ? "class" : "instance";
       const selector = methodMatch[3];
@@ -361,20 +365,20 @@ export const inspectNativeDispatchMetadata = (
         class_name: methodMatch[2],
         selector,
         method_type: methodType,
-        implementation_address: entry.address,
-        location: { address: entry.address, file_offset: null },
+        implementation_address: address,
+        location: { address, file_offset: null },
         decode: { status: "partial", reason: "symbol_name_only" },
-        evidence: symbolEvidence(entry.name, entry.address),
+        evidence: symbolEvidence(name, address),
       });
       classNames.add(methodMatch[2]);
     }
 
-    if (isSwiftMangledSymbolName(entry.name) || entry.name.startsWith("_Tt"))
+    if (isSwiftMangledSymbolName(name) || name.startsWith("_Tt"))
       swiftSymbols.push({
-        mangled_name: entry.name,
-        address: entry.address,
+        mangled_name: name,
+        address,
         decode: { status: "partial", reason: "mangled_symbol_not_demangled" },
-        evidence: symbolEvidence(entry.name, entry.address),
+        evidence: symbolEvidence(name, address),
       });
   }
 

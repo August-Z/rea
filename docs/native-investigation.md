@@ -397,7 +397,9 @@ complete observation.
   initialized at runtime stay unresolved. Generic, resilient, async and
   coroutine tables, and inherited overrides, have explicit unsupported or
   partial coverage. Other providers retain the
-  existing symbol-based inventory with its narrower coverage.
+  existing symbol-based inventory with its narrower coverage. A symbol the
+  provider names without an address keeps its name with a null address and
+  location, and its dispatch stays unresolved.
 
 ## Native desktop observation
 
