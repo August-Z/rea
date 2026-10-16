@@ -141,6 +141,22 @@ export class IdaProvider implements AnalysisProviderCandidate {
           "IDA does not admit headerless raw binaries. Open the target with Ghidra and supply architecture and entry_point.",
         diagnostics,
       };
+    // The attached identity check compares only the input digest, path and
+    // image base that upstream reports; none identifies the slice the GUI
+    // database analyzed. Headless mode analyzes a private copy thinned to the
+    // selected slice. An unreadable registration is treated as attached, as
+    // capabilities() does.
+    const config = this.#configuration();
+    if (
+      target.format === "mach-o-universal" &&
+      (!config.ok || config.value.mode === "attached")
+    )
+      return {
+        status: "unsupported",
+        code: "target_format_unsupported",
+        reason: `Attached IDA cannot show which slice of a universal Mach-O its database analyzed, so results could not be attributed to the selected ${target.architecture} slice. Use a headless registration, which analyzes only the selected slice, or open a thin ${target.architecture} binary.`,
+        diagnostics: { ...diagnostics, architecture: target.architecture },
+      };
     return { status: "supported", code: null, reason: null, diagnostics };
   }
   async resolveAnalysisProfile(

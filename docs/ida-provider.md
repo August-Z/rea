@@ -39,7 +39,7 @@ rea function /absolute/path/to/program main --json
 rea decompile /absolute/path/to/program main --json
 ```
 
-Open the **original input binary** in REA, not an `.idb` or `.i64` database. Its SHA-256 must match IDA's recorded input hash. REA checks the attached identity and image base around each analysis request. A mismatch or target switch fails with recovery guidance. The original input must remain readable by REA; WSL can use its mounted alias while the GUI runs on Windows.
+Open the **original input binary** in REA, not an `.idb` or `.i64` database. Its SHA-256 must match IDA's recorded input hash. Attached registrations do not admit universal Mach-O containers: the attached identity check compares only the input digest, path and image base that upstream reports, and none of those identifies the slice the GUI database analyzed. Use a headless registration, which analyzes only the selected slice, or open a thin binary. REA checks the attached identity and image base around each analysis request. A mismatch or target switch fails with recovery guidance. The original input must remain readable by REA; WSL can use its mounted alias while the GUI runs on Windows.
 
 REA's close operation releases its MCP connection or proxy. It never saves or closes the existing GUI database. External edits remain visible because results are live and are not replayed from snapshots. These checks do not lock the GUI or prove that the database is unpatched.
 

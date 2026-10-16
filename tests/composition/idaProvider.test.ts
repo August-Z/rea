@@ -16,6 +16,9 @@ import { createEvidenceBundle } from "../../src/domain/evidenceBundle.js";
 import { createAnalysisExecution } from "../../src/application/AnalysisProvider.js";
 import { EnhancedTools } from "../../src/application/EnhancedTools.js";
 import { IDA_PROVIDER_IDENTITY } from "../../src/ida/IdaProviderCapabilities.js";
+import { fat } from "../../src/domain/binaryTarget.fixture.js";
+import { composeBinarySession } from "../../src/application/binary/BinarySessionComposition.js";
+import { AnalysisProviderRegistry } from "../../src/application/binary/AnalysisProviderRegistry.js";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -212,6 +215,83 @@ describe("IDA binary_overview execution", () => {
     }
     const procedures = await session.execute("list_procedures", {});
     expect(procedures.ok).toBe(true);
+    expect((await session.close()).ok).toBe(true);
+  });
+});
+
+describe("IDA universal Mach-O slice attribution", () => {
+  const openUniversal = async (registration: Record<string, unknown>) => {
+    const { root } = await createIdaTarget();
+    roots.push(root);
+    const path = join(root, "registration.json");
+    await writeFile(
+      path,
+      JSON.stringify({ workspaceRoot: root, ...registration }),
+    );
+    const universal = join(root, "universal");
+    // x86_64 and arm64 slices, so either host has a selectable slice.
+    await writeFile(universal, fat([0x01000007, 0x0100000c]));
+    const config = parseConfig({ REA_IDA_MCP_CONFIG: path });
+    if (!config.ok) throw config.error;
+    let connects = 0;
+    const session = composeBinarySession(
+      new AnalysisProviderRegistry(
+        [
+          new IdaProvider(config.value, {}, () => {
+            connects += 1;
+            throw new Error("open must not connect to IDA");
+          }),
+        ],
+        "ida",
+      ),
+    );
+    const opened = await session.open(universal);
+    return { opened, connects: () => connects, session };
+  };
+
+  it.each([
+    { command: "fixture" },
+    { url: "http://127.0.0.1:13337/mcp", protocol: "native" },
+  ])(
+    "refuses an attached registration for a universal Mach-O (%j)",
+    async (registration) => {
+      const { opened, connects, session } = await openUniversal(registration);
+      expect(opened.ok).toBe(true);
+      const analyzed = await session.execute("procedure_assembly", {
+        procedure: "main",
+      });
+      if (analyzed.ok) throw new Error("Expected attached universal refusal");
+      expect(projectAnalysisError(analyzed.error)).toMatchObject({
+        details: {
+          selection_reason: "target_unsupported",
+          rejections: [
+            {
+              provider_id: "ida",
+              code: "target_format_unsupported",
+              reason: expect.stringContaining(
+                "cannot show which slice of a universal Mach-O",
+              ),
+            },
+          ],
+        },
+      });
+      expect(connects()).toBe(0);
+      expect((await session.close()).ok).toBe(true);
+    },
+  );
+
+  it("admits a headless registration, which analyzes only the selected slice", async () => {
+    const { opened, connects, session } = await openUniversal({
+      command: "fixture",
+      mode: "headless",
+    });
+    expect(opened.ok).toBe(true);
+    expect(session.status()).toMatchObject({
+      analysis_provider_candidates: [
+        { target_support: { status: "supported" } },
+      ],
+    });
+    expect(connects()).toBe(0);
     expect((await session.close()).ok).toBe(true);
   });
 });
