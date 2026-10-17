@@ -626,6 +626,8 @@ Dates are reported as `{ "$plist_type": "date", "iso8601": "<timestamp>" }`. A
 date the decoder cannot represent, such as an XML date with a year beyond 9999
 or a negative year, is reported as `{ "$plist_type": "date", "iso8601": null }`
 with a counted limitation; the rest of the plist or archive is still decoded.
+A negative-zero real, which a JSON number cannot distinguish from positive
+zero, is reported as `{ "$plist_type": "real", "decimal": "-0" }`.
 `inspect_plist` and Interface Builder decoding use the same projection.
 
 ## Locate a byte signature

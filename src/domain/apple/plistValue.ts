@@ -26,7 +26,8 @@ export const unknownDateLimitation = (count: number): string =>
 /**
  * Project a decoded plist into JSON. Data, dates and retained big integers become explicit
  * `$plist_type` objects; a non-finite real becomes an explicit unknown
- * because the XML decoder reports NaN and ±infinity alike.
+ * because the XML decoder reports NaN and ±infinity alike, and a negative-zero
+ * real keeps its sign as decimal text.
  */
 export const projectPlistValue = (
   value: unknown,
@@ -64,6 +65,10 @@ export const projectPlistValue = (
       unknownRealCount += 1;
       return scalar({ $plist_type: "real", value: null });
     }
+    // JSON numbers cannot carry the sign of zero, so a decoded -0.0 real
+    // would otherwise be reported as observed positive zero.
+    if (Object.is(item, -0))
+      return scalar({ $plist_type: "real", decimal: "-0" });
     if (typeof item === "bigint")
       return scalar({ $plist_type: "integer", decimal: item.toString() });
     if (Array.isArray(item)) {
