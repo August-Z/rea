@@ -98,7 +98,9 @@ export const decodeXmlPropertyList = (document: Document) => {
           : undefined;
         if (exact === undefined) {
           numbers.markIncomplete();
-          return Number.parseInt(first.nodeValue ?? "", 10);
+          // Integers have no signed zero; keep -0 for reals only.
+          const parsed = Number.parseInt(first.nodeValue ?? "", 10);
+          return Object.is(parsed, -0) ? 0 : parsed;
         }
         numbers.integer(exact);
         const decoded = Number(exact);

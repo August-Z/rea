@@ -41,6 +41,16 @@ cliTest(
         { $plist_type: "real", decimal: "-0" },
       ],
       ["xml-positive-zero", xmlArchive("0.0"), 0],
+      // An integer has no signed zero, even when its text is read leniently.
+      [
+        "xml-integer-negative-zero",
+        Buffer.from(
+          xmlArchive("0")
+            .toString("utf8")
+            .replace("<real>0</real>", "<integer>-0<!-- note --></integer>"),
+        ),
+        0,
+      ],
       ["xml-nonzero", xmlArchive("1.25"), 1.25],
     ] as const;
     for (const [name, bytes, expected] of cases) {
