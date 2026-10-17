@@ -72,6 +72,8 @@ export interface CaptureState {
   metadataBytes: number;
   scriptsObserved: number;
   invalidScripts: number;
+  /** Context lifecycle events counted but not applied: their context identifier was invalid. */
+  invalidContextEvents: number;
   truncated: boolean;
   readonly truncationReasons: Set<string>;
 }
@@ -422,6 +424,7 @@ const emptyCaptureState = (): CaptureState => ({
   metadataBytes: 0,
   scriptsObserved: 0,
   invalidScripts: 0,
+  invalidContextEvents: 0,
   truncated: false,
   truncationReasons: new Set(),
 });
@@ -495,6 +498,7 @@ const ingestContext = (event: CdpEvent, state: CaptureState): void => {
       : runtimeContext?.executionContextId,
   );
   if (key === null) {
+    state.invalidContextEvents += 1;
     retainEvent(state, 0);
     return;
   }

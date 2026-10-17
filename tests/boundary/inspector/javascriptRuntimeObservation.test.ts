@@ -205,6 +205,44 @@ describe("Inspector execution-context lifecycle metadata", () => {
       await fake.close();
     }
   });
+
+  test("reports lifecycle events whose context identifier cannot be applied", async () => {
+    const fixture = await runtimeFixture();
+    const fake = await startFakeV8Inspector({
+      targetUrl: pathToFileURL(fixture.entry).href,
+      runtimeEvents: [
+        {
+          method: "Runtime.executionContextCreated",
+          params: { context: { id: 1, origin: "", name: "valid" } },
+        },
+        {
+          method: "Runtime.executionContextCreated",
+          params: { context: { id: "2", origin: "", name: "string id" } },
+        },
+        {
+          method: "Runtime.executionContextDestroyed",
+          params: { executionContextId: 1.5 },
+        },
+      ],
+    });
+    try {
+      const result = await new V8InspectorProvider().observe(
+        observeInput(fake.endpoint, fake.targetId, "node"),
+      );
+      if (!result.ok) throw result.error;
+      expect(result.value.execution_contexts).toEqual([
+        { context_key: "1", state: "created", name: "valid", origin: "" },
+      ]);
+      const contextUnknowns = result.value.unknowns.filter((text) =>
+        text.includes("execution-context lifecycle event"),
+      );
+      expect(contextUnknowns).toEqual([
+        expect.stringMatching(/^2 execution-context lifecycle event\(s\) /),
+      ]);
+    } finally {
+      await fake.close();
+    }
+  });
 });
 
 test("rejects unknown runtime observation fields", () => {

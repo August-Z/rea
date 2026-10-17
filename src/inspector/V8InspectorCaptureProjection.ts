@@ -218,6 +218,11 @@ export const finalizeInspectorCapture = async ({
         : [
             `${String(unresolvedScripts)} observed script location${unresolvedScripts === 1 ? " remains" : "s remain"} unverified; raw URLs and script metadata are retained.`,
           ]),
+      ...(state.invalidContextEvents === 0
+        ? []
+        : [
+            `${String(state.invalidContextEvents)} execution-context lifecycle event(s) carried a context identifier that is not a safe integer; they were counted but not applied, so the affected context lifecycle is unknown.`,
+          ]),
       "Scripts collected before attachment may have been garbage-collected and therefore omitted.",
       "A bounded observation window cannot establish that an unobserved script or behavior never occurs.",
       "The declared Node/Electron process role is not authenticated by the Inspector protocol.",
