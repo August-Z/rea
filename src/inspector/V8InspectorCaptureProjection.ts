@@ -221,7 +221,7 @@ export const finalizeInspectorCapture = async ({
       ...(state.invalidContextEvents === 0
         ? []
         : [
-            `${String(state.invalidContextEvents)} execution-context lifecycle event(s) carried a context identifier that is not a safe integer; they were counted but not applied, so the affected context lifecycle is unknown.`,
+            `${String(state.invalidContextEvents)} execution-context lifecycle event${state.invalidContextEvents === 1 ? " was" : "s were"} counted but not applied because the context identifier was not a safe integer; the affected context lifecycle is unknown.`,
           ]),
       "Scripts collected before attachment may have been garbage-collected and therefore omitted.",
       "A bounded observation window cannot establish that an unobserved script or behavior never occurs.",

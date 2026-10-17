@@ -109,7 +109,9 @@ The direct observations are:
 - `Runtime.executionContextCreated`,
   `Runtime.executionContextDestroyed`, and
   `Runtime.executionContextsCleared`, establishing context lifecycle within
-  the capture window.
+  the capture window. A lifecycle event whose context identifier is not a
+  safe integer is counted but not applied, and `unknowns` reports how many
+  such events left a context lifecycle unknown.
 
 The Inspector protocol does not directly expose require/import caller edges,
 EventEmitter emissions or listener invocation, Electron IPC messages or

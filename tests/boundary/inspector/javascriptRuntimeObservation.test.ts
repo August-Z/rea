@@ -237,8 +237,12 @@ describe("Inspector execution-context lifecycle metadata", () => {
         text.includes("execution-context lifecycle event"),
       );
       expect(contextUnknowns).toEqual([
-        expect.stringMatching(/^2 execution-context lifecycle event\(s\) /),
+        expect.stringMatching(/^2 execution-context lifecycle events were /),
       ]);
+      // Counted but not applied: the events are not budget drops.
+      const { capture } = result.value;
+      expect(capture.events_dropped).toBe(0);
+      expect(capture.events_retained).toBe(capture.events_observed);
     } finally {
       await fake.close();
     }
