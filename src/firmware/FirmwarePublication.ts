@@ -10,7 +10,11 @@ import { join } from "node:path";
 import type { z } from "zod";
 import { SafeOutputTree } from "../artifacts/SafeOutputTree.js";
 import { SafeOutputTreeCreationFailure } from "../artifacts/SafeOutputTreeCreationFailure.js";
-import { AnalysisOutputError } from "../domain/analysisErrorCore.js";
+import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
+import {
+  AnalysisInputError,
+  AnalysisOutputError,
+} from "../domain/analysisErrorCore.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { jsonValueSchema } from "../domain/jsonValue.js";
 import { firmwareResultSchemas } from "../domain/firmware/firmwareAnalysis.js";
@@ -86,6 +90,62 @@ const gapSortKey = (gap: ExtractionGap): string =>
     gap.relative_path ?? "",
   ].join("\u0000");
 
+// Path-shape failures name a destination the caller can correct. Permission
+// failures (EACCES, EPERM) stay host failures.
+const DESTINATION_PATH_CODES = new Set([
+  "ENOENT",
+  "ENOTDIR",
+  "ELOOP",
+  "ENAMETOOLONG",
+]);
+
+const systemCode = (cause: unknown): string | undefined =>
+  cause instanceof Error && "code" in cause && typeof cause.code === "string"
+    ? cause.code
+    : undefined;
+
+const destinationRefusalMessage = (cause: unknown): string | undefined => {
+  if (cause instanceof SafeOutputTreeCreationFailure) return undefined;
+  if (cause instanceof ArtifactReaderFailure) {
+    if (cause.cleanup !== undefined) return undefined;
+    if (cause.reason === "path") return cause.message;
+    return cause.reason === "unavailable" &&
+      DESTINATION_PATH_CODES.has(systemCode(cause.cause) ?? "")
+      ? cause.message
+      : undefined;
+  }
+  // mkdir under a parent that is not a directory: ENOTDIR (ENOENT on Windows).
+  const code = systemCode(cause);
+  return code === "ENOTDIR" || code === "ENOENT"
+    ? "Extraction output parent is not a directory"
+    : undefined;
+};
+
+/**
+ * Only destination admission can blame output_directory: an existing
+ * destination or a missing or non-directory parent is a caller refusal.
+ * Failures after admission are host write failures on extracted files.
+ */
+const outputDirectoryRefusal = (cause: unknown): unknown => {
+  const message = destinationRefusalMessage(cause);
+  return message === undefined
+    ? cause
+    : new AnalysisInputError(
+        "extract_firmware",
+        {
+          cause,
+          userMessage: `${message}. Choose an absent output directory under an existing parent directory.`,
+        },
+        [
+          {
+            path: ["output_directory"],
+            reason: "invalid_value",
+            message,
+          },
+        ],
+      );
+};
+
 /** Publish verified regular files, preserving links as metadata and rolling back failed writes. */
 export const publishFirmwareExtraction = async (context: {
   files: FirmwareFileAccess;
@@ -131,7 +191,11 @@ export const publishFirmwareExtraction = async (context: {
         );
     }
     const unpublished = [];
-    tree = await SafeOutputTree.create(context.outputDirectory);
+    tree = await SafeOutputTree.create(context.outputDirectory).catch(
+      (cause: unknown) => {
+        throw outputDirectoryRefusal(cause);
+      },
+    );
     for (const entry of context.entries) {
       if (entry.kind !== "file") {
         unpublished.push({

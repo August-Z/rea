@@ -372,6 +372,79 @@ async function stageGhidra(mcpFiles) {
   );
 }
 
+async function refusedDestination(mode, outputDirectory) {
+  let error;
+  if (mode === "mcp") {
+    const result = await mcpClient.callTool(
+      {
+        name: "extract_firmware",
+        arguments: { path: firmwarePath, output_directory: outputDirectory },
+      },
+      { timeout: CALL_TIMEOUT_MS },
+    );
+    assert.equal(result.isError, true, JSON.stringify(result));
+    error = JSON.parse(result.content[0].text).error;
+  } else {
+    const failure = await execFileAsync(
+      process.execPath,
+      [
+        ENTRYPOINT,
+        "extract-firmware",
+        firmwarePath,
+        outputDirectory,
+        "--format",
+        "json",
+      ],
+      {
+        env: baseEnv,
+        cwd: REPO_ROOT,
+        timeout: CALL_TIMEOUT_MS,
+        maxBuffer: MAX_STDOUT_BYTES,
+      },
+    ).then(
+      () => assert.fail("Expected the destination to be refused"),
+      (cause) => cause,
+    );
+    assert.equal(failure.code, 1);
+    error = JSON.parse(failure.stdout);
+  }
+  assert.equal(error.category, "invalid_input", JSON.stringify(error));
+  assert.equal(error.code, "invalid_request");
+  assert.equal(error.recovery?.kind, "inspect_input_contract");
+  assert.deepEqual(
+    error.details.issues.map((issue) => issue.path),
+    [["output_directory"]],
+  );
+}
+
+async function stageDestinations(cli) {
+  // An existing destination is refused without being overwritten.
+  const existing = join(workDir, "cli-output");
+  const listing = await fs.readdir(existing, { recursive: true });
+  const parentFile = join(workDir, "parent-file");
+  await fs.writeFile(parentFile, "kept");
+  for (const [mode, outputDirectory] of [
+    ["cli", existing],
+    ["mcp", existing],
+    ["cli", join(workDir, "missing-parent", "output")],
+    ["mcp", join(workDir, "missing-parent", "output")],
+    ["cli", join(parentFile, "output")],
+    ["mcp", join(parentFile, "output")],
+  ])
+    await refusedDestination(mode, outputDirectory);
+  assert.deepEqual(await fs.readdir(existing, { recursive: true }), listing);
+  for (const file of cli.files.files)
+    assert.equal(
+      (await hashVerifierFile(file.path, fileResources)).sha256,
+      file.sha256,
+    );
+  await assert.rejects(fs.access(join(workDir, "missing-parent")));
+  assert.equal(await fs.readFile(parentFile, "utf8"), "kept");
+  console.log(
+    "PASS real Unblob destination refusals: existing, parentless and file-parent output directories are caller input",
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -385,6 +458,7 @@ try {
   const cli = await stageCli();
   await connectMcp();
   const mcpFiles = await stageMcp(cli);
+  await stageDestinations(cli);
 
   if (process.env.REA_FIRMWARE_VERIFY_EXT4 === "1") await stageExt4();
   if (process.env.REA_FIRMWARE_VERIFY_GHIDRA === "1")

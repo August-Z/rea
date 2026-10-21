@@ -124,7 +124,10 @@ build's source revision, so that field remains unknown.
   without it, the inspection step is unavailable and the region remains unexamined. A listed gap does not
   mean the target is corrupt or that a retained region is empty; REA installs
   nothing.
-- The destination must be absent, absolute, with an existing parent. Publication
+- The destination must be absent, absolute, with an existing parent. An
+  existing destination or a missing or non-directory parent is an
+  `invalid_request` for `output_directory`; it is detected after Unblob has
+  run. Permission failures remain host failures. Publication
   uses exclusive, symlink-resistant writes and durable digest readback. Existing
   destinations are never overwritten. This is not an atomic directory rename:
   a new tree can be visible while files are written. Failed uncommitted output
