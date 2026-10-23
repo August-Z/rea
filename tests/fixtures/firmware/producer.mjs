@@ -381,6 +381,16 @@ if (args.includes("--version")) {
         },
       ];
     }
+    if (mode === "task-error") {
+      records[1].reports = [
+        ...records[1].reports,
+        {
+          __typename__: "UnknownError",
+          severity: "ERROR",
+          exception: "RuntimeError('task failed')",
+        },
+      ];
+    }
     if (
       mode !== "depth-reentry" &&
       mode !== "depth-orphan" &&
@@ -393,7 +403,11 @@ if (args.includes("--version")) {
           ? "["
           : JSON.stringify(records),
       );
-    if (mode === "dependency" || mode === "multi-file-dependency")
+    if (
+      mode === "dependency" ||
+      mode === "multi-file-dependency" ||
+      mode === "task-error"
+    )
       process.exitCode = 1;
     if (
       mode === "workspace-cleanup-failure" ||

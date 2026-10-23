@@ -358,8 +358,12 @@ export const normalizeUnblobReport = (
           jsonValueSchema.parse({ input_path: path, report: item }),
         );
       noteMissingDependencies(path, [item]);
+      // Pinned Unblob reports an exception raised while processing a task as
+      // a task-level UnknownError; nested chunk and multi-file failures stay
+      // with their owning stage below.
       if (
-        item.__typename__ === "ExtractorExecutionErrorReport" &&
+        (item.__typename__ === "ExtractorExecutionErrorReport" ||
+          item.__typename__ === "UnknownError") &&
         !taskFailures.has(path)
       ) {
         taskFailures.add(path);

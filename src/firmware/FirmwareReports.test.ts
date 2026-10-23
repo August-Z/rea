@@ -439,6 +439,83 @@ describe("firmware task dependency failures", () => {
   });
 });
 
+describe("Unblob task errors", () => {
+  const taskError = {
+    __typename__: "UnknownError",
+    severity: "ERROR",
+    exception: "RuntimeError('handler crashed')",
+  };
+  it("records a task-level error as one standalone failed task", () => {
+    const record = root();
+    const normalized = normalizeUnblobReport(
+      [
+        {
+          ...record,
+          reports: [
+            ...record.reports.filter(
+              (item) => item.__typename__ !== "UnknownChunkReport",
+            ),
+            taskError,
+            taskError,
+          ],
+        },
+      ],
+      context,
+    );
+    expect(normalized.coverage).toBe("partial");
+    expect(normalized.diagnostics).toEqual([
+      { input_path: "$input", report: taskError },
+      { input_path: "$input", report: taskError },
+    ]);
+    expect(normalized.failed_extraction_stages).toEqual([
+      {
+        input_path: "$input",
+        provider_id: null,
+        handler: null,
+        dependencies: [],
+        kind: "extractor-failure",
+      },
+    ]);
+  });
+  it("keeps a chunk extraction error with its chunk", () => {
+    const record = root();
+    const normalized = normalizeUnblobReport(
+      [
+        {
+          ...record,
+          reports: [
+            ...record.reports.filter(
+              (item) => item.__typename__ !== "UnknownChunkReport",
+            ),
+            {
+              __typename__: "ChunkReport",
+              id: "gzip-id",
+              start_offset: 0,
+              end_offset: 20,
+              size: 20,
+              handler_name: "gzip",
+              is_encrypted: false,
+              extraction_reports: [taskError],
+            },
+          ],
+        },
+      ],
+      context,
+    );
+    expect(normalized.failed_extraction_stages).toEqual([]);
+    expect(normalized.chunks).toEqual([
+      expect.objectContaining({
+        provider_id: "gzip-id",
+        handler: "gzip",
+        extraction_failed: true,
+      }),
+    ]);
+    expect(normalized.diagnostics).toEqual([
+      { input_path: "$input", stage: "gzip", report: taskError },
+    ]);
+  });
+});
+
 describe("firmware chunk dependency failures", () => {
   it("retains named and unnamed dependency reports on one chunk", () => {
     const record = root();

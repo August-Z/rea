@@ -524,6 +524,32 @@ it("reports a failed multi-file stage as an extractor-failure gap", async () => 
   );
 });
 
+it("reports a task-level Unblob error as a standalone extractor-failure gap", async () => {
+  const fixture = await firmwareFixture("task-error");
+  const result = await fixture.service.execute("extract_firmware", {
+    path: fixture.path,
+    output_directory: fixture.output,
+  });
+  if (!result.ok) throw result.error;
+  const normalized = firmwareResultSchemas.extract_firmware.parse(
+    result.value.normalized_result,
+  );
+  expect(normalized.coverage).toBe("partial");
+  expect(gapsWithContinuations(normalized)).toEqual([
+    {
+      kind: "extractor-failure",
+      input_path: "$input",
+      relative_path: null,
+      handler: null,
+      provider_id: null,
+      range: null,
+      root_file_range: null,
+      dependencies: [],
+      continuation: expect.stringContaining("Review the stage report"),
+    },
+  ]);
+});
+
 it("carries the owning multi-file stage on a task-level dependency gap", async () => {
   const fixture = await firmwareFixture("multi-file-dependency");
   const result = await fixture.service.execute("extract_firmware", {
