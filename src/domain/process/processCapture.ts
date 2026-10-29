@@ -814,7 +814,10 @@ export const partialProcessCaptureObservationSchema = z
       capture.settlement.state === "quiesced"
         ? {
             ...capture.settlement,
-            cleanup_outcome: "not_required" as const,
+            cleanup_outcome:
+              capture.settlement.cleanup_outcome === "cleaned"
+                ? ("cleaned" as const)
+                : ("not_required" as const),
           }
         : { ...capture.settlement, cleanup_outcome: "cleaned" as const };
     const validationCapture: UnverifiedProcessCapture = {

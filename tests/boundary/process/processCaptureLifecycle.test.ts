@@ -13,7 +13,10 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
-import { itWithCaptureCapability } from "./processCaptureCapability.js";
+import {
+  CAPTURE_SKIP_REASON,
+  itWithCaptureCapability,
+} from "./processCaptureCapability.js";
 
 import {
   captureProcessScenario,
@@ -349,8 +352,10 @@ itWithCaptureCapability(
   10_000,
 );
 
-(process.platform === "linux" ? itWithCaptureCapability : it.skip)(
-  "reports cleanup of a detached run-token child that outlived a quiesced tree",
+// The double-detached fixture relies on Linux new-session and reparenting
+// timing that the parent-pid sampler misses.
+it.skipIf(CAPTURE_SKIP_REASON !== false || process.platform !== "linux")(
+  "reports cleanup of a detached run-token child that outlived a quiesced tree on Linux",
   async () => {
     const root = await createTestTempDirectory("rea-detached-orphan-");
     const pidMarker = join(root, "children.json");
@@ -374,17 +379,19 @@ itWithCaptureCapability(
           idle_timeout_ms: 5_000,
         }),
       );
-      if (!result.ok) throw result.error;
+      const { capture, cleanupIncomplete } = captureObservations(result);
       const [ownedPid] = await readDetachedFixturePids(pidMarker);
       if (ownedPid === undefined)
         throw new TypeError("detached child PID was not recorded");
+      // An unverifiable host cleanup is reported as failed by the helper.
+      if (cleanupIncomplete) return;
       await waitForProcessExit(ownedPid);
       // Cleanup killed the child, so the capture cannot claim that none was
       // required. A sample that caught the child makes the tree alive at the
       // deadline instead, which already reports cleanup.
-      expect(result.value.settlement.cleanup_outcome).toBe("cleaned");
-      if (result.value.settlement.state === "quiesced")
-        expect(result.value.residual_unknowns).toContainEqual({
+      expect(capture.settlement.cleanup_outcome).toBe("cleaned");
+      if (capture.settlement.state === "quiesced")
+        expect(capture.residual_unknowns).toContainEqual({
           scope: "process",
           reason: expect.stringContaining(
             "Cleanup terminated token-owned processes",

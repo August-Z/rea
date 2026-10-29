@@ -474,7 +474,7 @@ it("retains unrelated withheld processes through cleanup, capture, and JSON", as
       state: "quiesced",
       cleanup_outcome: "cleaned",
     });
-    expect(capture.residual_unknowns).toEqual([
+    const expectedUnknowns = [
       ...original.residual_unknowns,
       {
         scope: "process",
@@ -490,7 +490,15 @@ it("retains unrelated withheld processes through cleanup, capture, and JSON", as
         scope: "process",
         reason: expect.stringContaining("901 could not be verified"),
       },
-    ]);
+    ];
+    expect(capture.residual_unknowns).toEqual(expectedUnknowns);
+    // Settling an already settled capture keeps one termination unknown.
+    const resettled = resolveProcessResult(capture, undefined, outcome);
+    expect(
+      resettled.residual_unknowns.filter(({ reason }) =>
+        reason.startsWith("Cleanup terminated token-owned processes"),
+      ),
+    ).toHaveLength(1);
   }
 });
 
@@ -713,6 +721,50 @@ it("retains completed observations when finalization fails after clean cleanup",
     analysisErrorProjectionSchema.safeParse(projectAnalysisError(error))
       .success,
   ).toBe(true);
+});
+
+it("keeps a signaled cleanup in partial observations when finalization fails", () => {
+  const capture = emptyProcessCapture();
+  expect(capture.settlement.state).toBe("quiesced");
+  const { cleanup: _cleanup, ...pending } = capture;
+  void _cleanup;
+  const cleanup = {
+    owned_process_group: { state: "cleaned" as const, reason: null },
+    terminal_renderer: { state: "cleaned" as const, reason: null },
+    temporary_root: { state: "cleaned" as const, reason: null },
+  };
+
+  let error: ProcessCaptureError | undefined;
+  try {
+    resolveProcessResult(
+      pending,
+      new Error("final filesystem snapshot failed"),
+      {
+        report: cleanup,
+        cleanupLease: undefined,
+        terminatedOwnedProcesses: true,
+      },
+    );
+  } catch (cause: unknown) {
+    if (!(cause instanceof ProcessCaptureError)) throw cause;
+    error = cause;
+  }
+  if (error === undefined) throw new Error("expected capture failure");
+
+  expect(error.partialObservation).toMatchObject({
+    capture: {
+      settlement: { state: "quiesced", cleanup_outcome: "cleaned" },
+      residual_unknowns: expect.arrayContaining([
+        {
+          scope: "process",
+          reason: expect.stringContaining(
+            "Cleanup terminated token-owned processes",
+          ),
+        },
+      ]),
+    },
+    cleanup,
+  });
 });
 
 it("preserves cancellation while projecting observations and successful cleanup", () => {
