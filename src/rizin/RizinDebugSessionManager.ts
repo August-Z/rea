@@ -838,24 +838,18 @@ export class RizinDebugSessionManager {
         );
       }
       if (session.protocolError !== undefined) {
+        const stopCause = session.stopReason ?? session.protocolError;
         const evidence = partialEvidence([
-          session.protocolError,
+          stopCause,
           "The Rizin protocol failed; retained command output is partial and completion is unknown.",
           "The command is unrestricted and may access local files, the shell, network, or mutate the target.",
         ]);
         return err(
-          await this.#stopAfterProtocolFailure(
-            session,
-            session.protocolError,
-            cause,
-            {
-              commandTurnHeld: true,
-              signal,
-              ...(evidence === undefined
-                ? {}
-                : { partialObservation: evidence }),
-            },
-          ),
+          await this.#stopAfterProtocolFailure(session, stopCause, cause, {
+            commandTurnHeld: true,
+            signal,
+            ...(evidence === undefined ? {} : { partialObservation: evidence }),
+          }),
         );
       }
       if (interruption?.kind === "timeout") {
@@ -1824,17 +1818,14 @@ const recordRizinStop = (
 
 /** Why REA stopped admitting commands, when a protocol failure or process exit decided it. */
 const rizinSessionStopReason = (
-  session: Pick<RizinDebugSession, "protocolError" | "stopReason" | "exited">,
+  session: Pick<RizinDebugSession, "stopReason" | "exited">,
 ): string | undefined =>
   session.stopReason ??
-  session.protocolError ??
   (session.exited ? "The Rizin process exited." : undefined);
 
 /** Name a stopped session's cause instead of a bare input refusal. */
 const stoppedSessionError = (
-  session:
-    | Pick<RizinDebugSession, "id" | "protocolError" | "stopReason" | "exited">
-    | undefined,
+  session: Pick<RizinDebugSession, "id" | "stopReason" | "exited"> | undefined,
 ): AnalysisError => {
   const reason =
     session === undefined ? undefined : rizinSessionStopReason(session);

@@ -40,7 +40,7 @@ process.stdin.on("data", (chunk) => {
 );
 
 it.skipIf(process.platform === "win32")(
-  "names the frame-limit stop on later commands and in session status",
+  "names the frame-queue stop on later commands and in session status",
   async () => {
     const provider = await makeProvider(
       `process.stdout.write("\\0");
@@ -65,8 +65,7 @@ process.stdin.on("data", (chunk) => {
 
     const status = manager.status(sessionId);
     expect(status?.state).toBe("closed");
-    // The unsolicited-frame queue overflows before the command frame limit;
-    // the later frame-limit failure must not replace that first cause.
+    // 4100 frames in one chunk overflow the bounded frame queue first.
     const stopReason =
       "Rizin produced unsolicited frames exceeding the bounded queue limit of 4096 frames or 4194304 bytes. This release has no runtime override.";
     expect(status?.stop_reason).toBe(stopReason);

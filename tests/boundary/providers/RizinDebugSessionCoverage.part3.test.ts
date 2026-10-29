@@ -423,7 +423,20 @@ it.skipIf(process.platform === "win32")(
       });
       expect(result.error.cleanupIncomplete).toBe(false);
     }
-    expect(manager.status(started.value.session_id)?.state).toBe("closed");
+    const status = manager.status(started.value.session_id);
+    expect(status?.state).toBe("closed");
+    // Cleanup synchronization clears protocolError; the stop cause survives it.
+    expect(status?.stop_reason).toBe(
+      "Unsolicited Rizin frames arrived before a command; command output can no longer be safely correlated.",
+    );
+    const refused = await manager.execute(started.value.session_id, "dr");
+    expect(refused.ok).toBe(false);
+    if (!refused.ok)
+      expect(refused.error).toMatchObject({
+        _tag: "AnalysisCapabilityUnavailableError",
+        reason:
+          "Unsolicited Rizin frames arrived before a command; command output can no longer be safely correlated.",
+      });
   },
 );
 

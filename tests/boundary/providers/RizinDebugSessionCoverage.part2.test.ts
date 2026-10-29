@@ -78,6 +78,15 @@ it.skipIf(process.platform === "win32").each([false, true])(
       expect(result.error.cleanup?.reason).toContain(
         "injected stop uncertainty",
       );
+    // The write failure stops the session first; the stdin stream error that
+    // follows must not replace it in the error or in status.
+    const firstCause =
+      "Rizin stdin write failed: injected write callback failure";
+    if (!result.ok && !incomplete)
+      expect(result.error).toMatchObject({ reason: firstCause });
+    expect(manager.status(started.value.session_id)?.stop_reason).toBe(
+      firstCause,
+    );
   },
 );
 
