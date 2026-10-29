@@ -398,6 +398,10 @@ than treating missing data as proof of equivalence. Cancellation and timeout
 run the same owned-process cleanup path. Settlement reports whether the
 sampled process group quiesced or whether cleanup was needed or unverifiable;
 sampling cannot prove that every short-lived or detached descendant was seen.
+When the tree quiesced but cleanup still terminated run-token processes, such
+as a detached descendant that outlived the root, `settlement.cleanup_outcome`
+is `cleaned` and a process residual unknown records that their later effects
+were not observed.
 
 ### Finalization interval
 

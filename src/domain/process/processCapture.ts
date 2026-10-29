@@ -191,7 +191,11 @@ export type RecordProcessCaptureEvent = (
   index: number,
 ) => void;
 
-/** Observed process-tree settlement and the cleanup required by that state. */
+/**
+ * Observed process-tree settlement and the cleanup it took. A quiesced tree
+ * reports `cleaned` when cleanup still terminated token-owned processes, such
+ * as detached descendants, that outlived it.
+ */
 export type ProcessSettlement =
   | VerifiedProcessSettlement
   | {
@@ -204,7 +208,7 @@ export type VerifiedProcessSettlement =
   | {
       readonly state: "quiesced";
       readonly elapsed_ms: number;
-      readonly cleanup_outcome: "not_required";
+      readonly cleanup_outcome: "not_required" | "cleaned";
     }
   | {
       readonly state: "alive_at_deadline" | "unverifiable";
@@ -440,7 +444,7 @@ const processSettlementSchema = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("quiesced"),
     elapsed_ms: z.int().nonnegative(),
-    cleanup_outcome: z.enum(["not_required", "failed"]),
+    cleanup_outcome: z.enum(["not_required", "cleaned", "failed"]),
   }),
   z.object({
     state: z.enum(["alive_at_deadline", "unverifiable"]),
@@ -551,7 +555,7 @@ const processCaptureShapeSchema = z.strictObject({
     z.object({
       state: z.literal("quiesced"),
       elapsed_ms: z.int().nonnegative(),
-      cleanup_outcome: z.literal("not_required"),
+      cleanup_outcome: z.enum(["not_required", "cleaned"]),
     }),
     z.object({
       state: z.enum(["alive_at_deadline", "unverifiable"]),

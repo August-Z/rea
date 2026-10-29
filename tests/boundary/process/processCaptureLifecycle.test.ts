@@ -11,7 +11,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { expect, onTestFinished, vi } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 import { itWithCaptureCapability } from "./processCaptureCapability.js";
 
@@ -341,6 +341,59 @@ itWithCaptureCapability(
           }
         }
         if (teardownFailure !== undefined) throw teardownFailure;
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    }
+  },
+  10_000,
+);
+
+(process.platform === "linux" ? itWithCaptureCapability : it.skip)(
+  "reports cleanup of a detached run-token child that outlived a quiesced tree",
+  async () => {
+    const root = await createTestTempDirectory("rea-detached-orphan-");
+    const pidMarker = join(root, "children.json");
+    try {
+      // An intermediate new-session process starts the hanging child in its
+      // own session and exits at once, so sampling normally misses the child
+      // and the sampled tree quiesces while the child carries the run token.
+      const child =
+        'require("node:fs").writeFileSync("children.json", JSON.stringify({ ownedPid: process.pid })); setInterval(() => undefined, 1000);';
+      const intermediate = `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(child)}], { detached: true, stdio: "ignore" }).unref(); process.exit(0);`;
+      const result = await captureProcessScenario(
+        processScenarioSchema.parse({
+          executable: process.execPath,
+          arguments: [
+            "-e",
+            `require("node:child_process").spawn(process.execPath, ["-e", ${JSON.stringify(intermediate)}], { detached: true, stdio: "ignore" }).on("exit", () => setTimeout(() => process.exit(0), 300));`,
+          ],
+          working_directory: root,
+          settle_ms: 500,
+          timeout_ms: 5_000,
+          idle_timeout_ms: 5_000,
+        }),
+      );
+      if (!result.ok) throw result.error;
+      const [ownedPid] = await readDetachedFixturePids(pidMarker);
+      if (ownedPid === undefined)
+        throw new TypeError("detached child PID was not recorded");
+      await waitForProcessExit(ownedPid);
+      // Cleanup killed the child, so the capture cannot claim that none was
+      // required. A sample that caught the child makes the tree alive at the
+      // deadline instead, which already reports cleanup.
+      expect(result.value.settlement.cleanup_outcome).toBe("cleaned");
+      if (result.value.settlement.state === "quiesced")
+        expect(result.value.residual_unknowns).toContainEqual({
+          scope: "process",
+          reason: expect.stringContaining(
+            "Cleanup terminated token-owned processes",
+          ),
+        });
+    } finally {
+      try {
+        for (const pid of await readDetachedFixturePids(pidMarker))
+          await terminateFixtureProcess(pid);
       } finally {
         await rm(root, { recursive: true, force: true });
       }

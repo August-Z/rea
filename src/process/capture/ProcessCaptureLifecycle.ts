@@ -1094,12 +1094,18 @@ const releaseCapturedProcessGroup = async (
     { readonly sweepTokenOwnedProcesses: true }
   >,
   host: ProcessCaptureCleanupHost,
-): Promise<ProcessCaptureCleanupReport["owned_process_group"]> => {
+): Promise<{
+  readonly report: ProcessCaptureCleanupReport["owned_process_group"];
+  readonly signaled: boolean;
+}> => {
   if (host.platform === "win32")
     return {
-      state: "unverified",
-      reason:
-        "owned process cleanup is unverifiable on Windows without process-job authority",
+      report: {
+        state: "unverified",
+        reason:
+          "owned process cleanup is unverifiable on Windows without process-job authority",
+      },
+      signaled: false,
     };
   let outcome: ProcessCaptureCleanupReport["owned_process_group"] = {
     state: "cleaned",
@@ -1109,11 +1115,12 @@ const releaseCapturedProcessGroup = async (
     readonly pid: number;
     readonly diagnostic: string;
   }> = [];
+  let signaled = false;
   try {
     const cleaned = await host.cleanupProcessGroup(ownership);
     unverified.push(...(cleaned.unverified ?? []));
-    if (!cleaned.cleaned)
-      outcome = { state: "unverified", reason: cleaned.reason };
+    if (cleaned.cleaned) signaled = cleaned.signaled;
+    else outcome = { state: "unverified", reason: cleaned.reason };
   } catch (cause: unknown) {
     outcome = {
       state: "failed",
@@ -1123,19 +1130,23 @@ const releaseCapturedProcessGroup = async (
           : "owned process cleanup failed",
     };
   }
-  return unverified.length === 0
-    ? outcome
-    : {
-        ...outcome,
-        unverified_processes: [
-          ...new Map(
-            unverified.map(({ pid, diagnostic }) => [
-              `${String(pid)}:${diagnostic}`,
-              { pid, reason: diagnostic },
-            ]),
-          ).values(),
-        ],
-      };
+  return {
+    report:
+      unverified.length === 0
+        ? outcome
+        : {
+            ...outcome,
+            unverified_processes: [
+              ...new Map(
+                unverified.map(({ pid, diagnostic }) => [
+                  `${String(pid)}:${diagnostic}`,
+                  { pid, reason: diagnostic },
+                ]),
+              ).values(),
+            ],
+          },
+    signaled,
+  };
 };
 
 export interface ProcessCaptureResourceCleanupOptions {
@@ -1156,6 +1167,8 @@ export interface ProcessCaptureCleanupOutcome {
   readonly report: ProcessCaptureCleanupReport;
   /** Undefined means that only historical facts, not an owner, are available. */
   readonly cleanupLease: AnalysisCleanupLease | undefined;
+  /** True when owned-process cleanup signaled live token-owned processes. */
+  readonly terminatedOwnedProcesses?: boolean;
 }
 
 /** One capture's exact resource owner, with completion tracked per resource. */
@@ -1170,6 +1183,7 @@ class ProcessCaptureResourceOwner {
     | ProcessCaptureCleanupReport["owned_process_group"]
     | undefined;
   #temporaryRoot: ProcessCaptureCleanupReport["temporary_root"] | undefined;
+  #terminatedOwnedProcesses = false;
 
   constructor(private readonly options: ProcessCaptureResourceCleanupOptions) {
     this.#host = options.host ?? processCaptureCleanupHost;
@@ -1228,14 +1242,22 @@ class ProcessCaptureResourceOwner {
   async release(): Promise<ProcessCaptureCleanupOutcome> {
     try {
       await this.cleanupLease.release();
-      return { report: this.report, cleanupLease: this.cleanupLease };
+      return {
+        report: this.report,
+        cleanupLease: this.cleanupLease,
+        terminatedOwnedProcesses: this.#terminatedOwnedProcesses,
+      };
     } catch (cause: unknown) {
       if (
         !(cause instanceof ProcessCaptureError) ||
         cause.cleanupReport === undefined
       )
         throw cause;
-      return { report: cause.cleanupReport, cleanupLease: this.cleanupLease };
+      return {
+        report: cause.cleanupReport,
+        cleanupLease: this.cleanupLease,
+        terminatedOwnedProcesses: this.#terminatedOwnedProcesses,
+      };
     }
   }
 
@@ -1264,7 +1286,7 @@ class ProcessCaptureResourceOwner {
       this.#ownedProcessGroup?.state === "not_required"
     )
       return;
-    this.#ownedProcessGroup = await releaseCapturedProcessGroup(
+    const released = await releaseCapturedProcessGroup(
       {
         runId: this.options.runId,
         leaderPid: this.options.terminal.pid,
@@ -1280,6 +1302,8 @@ class ProcessCaptureResourceOwner {
       },
       this.#host,
     );
+    this.#ownedProcessGroup = released.report;
+    if (released.signaled) this.#terminatedOwnedProcesses = true;
   }
 
   async #releaseTemporaryRoot(): Promise<void> {
@@ -1605,6 +1629,45 @@ export interface TerminalCaptureRetention {
   readonly normalized_terminal: NormalizedTerminalRetention;
 }
 
+const ownedProcessTerminationUnknown =
+  "Cleanup terminated token-owned processes, such as detached descendants, that were still running after the sampled process tree quiesced; their later effects were not observed and may differ from an uncaptured run.";
+
+/**
+ * Settlement and residual unknowns once owned-process cleanup succeeded. A
+ * quiesced tree whose cleanup still signaled token-owned processes reports
+ * that cleanup instead of claiming none was required.
+ */
+export const settleCapturedProcesses = (
+  capture: Pick<PendingProcessCapture, "settlement" | "residual_unknowns">,
+  cleanupOutcome: Pick<
+    ProcessCaptureCleanupOutcome,
+    "terminatedOwnedProcesses"
+  >,
+): Pick<UnverifiedProcessCapture, "settlement" | "residual_unknowns"> => {
+  const { state, elapsed_ms } = capture.settlement;
+  if (state !== "quiesced")
+    return {
+      settlement: { state, elapsed_ms, cleanup_outcome: "cleaned" },
+      residual_unknowns: capture.residual_unknowns,
+    };
+  if (cleanupOutcome.terminatedOwnedProcesses !== true)
+    return {
+      settlement: { state, elapsed_ms, cleanup_outcome: "not_required" },
+      residual_unknowns: capture.residual_unknowns,
+    };
+  return {
+    settlement: { state, elapsed_ms, cleanup_outcome: "cleaned" },
+    residual_unknowns: capture.residual_unknowns.some(
+      ({ reason }) => reason === ownedProcessTerminationUnknown,
+    )
+      ? capture.residual_unknowns
+      : [
+          ...capture.residual_unknowns,
+          { scope: "process", reason: ownedProcessTerminationUnknown },
+        ],
+  };
+};
+
 export const resolveProcessResult = (
   capture: PendingProcessCapture | ProcessCapture | undefined,
   executionFailure: unknown,
@@ -1646,17 +1709,17 @@ export const resolveProcessResult = (
               return data;
             })()
           : capture;
-      const settlement =
+      const settled =
         cleanupFailure !== undefined
-          ? { ...capture.settlement, cleanup_outcome: "failed" as const }
-          : capture.settlement.state === "quiesced"
-            ? {
+          ? {
+              settlement: {
                 ...capture.settlement,
-                cleanup_outcome: "not_required" as const,
-              }
-            : { ...capture.settlement, cleanup_outcome: "cleaned" as const };
+                cleanup_outcome: "failed" as const,
+              },
+            }
+          : settleCapturedProcesses(captureData, cleanupOutcome);
       const partialResult = partialProcessCaptureObservationSchema.safeParse({
-        capture: { ...captureData, settlement },
+        capture: { ...captureData, ...settled },
         cleanup,
         execution_failure: executionFailureReason ?? null,
       });
@@ -1732,16 +1795,13 @@ export const resolveProcessResult = (
   const unverifiedProcesses = cleanup.owned_process_group.unverified_processes;
   if ("cleanup" in capture && unverifiedProcesses === undefined) return capture;
 
-  const settlement: UnverifiedProcessCapture["settlement"] =
-    capture.settlement.state === "quiesced"
-      ? { ...capture.settlement, cleanup_outcome: "not_required" }
-      : { ...capture.settlement, cleanup_outcome: "cleaned" };
+  const settled = settleCapturedProcesses(capture, cleanupOutcome);
   try {
     return parseProcessCapture({
       ...capture,
-      settlement,
+      settlement: settled.settlement,
       residual_unknowns: [
-        ...capture.residual_unknowns,
+        ...settled.residual_unknowns,
         ...(unverifiedProcesses ?? []).map(({ pid, reason }) => ({
           scope: "process" as const,
           reason: `Ownership of unrelated process ${String(pid)} could not be verified; it was left untouched: ${reason}`,

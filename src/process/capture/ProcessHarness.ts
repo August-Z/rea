@@ -51,6 +51,7 @@ import {
   prepareProcessCapture,
   releaseProcessResources,
   resolveProcessResult,
+  settleCapturedProcesses,
   settleProcessCaptureJournal,
   type ProcessCaptureCleanupHost,
   type ProcessCaptureObservationBuffer,
@@ -498,13 +499,9 @@ const finishProcessRun = async (options: {
   const cleanupFailure = cleanupReportFailure(cleanup);
   let verifiedCapture: ProcessCapture | undefined;
   if (capture !== undefined && cleanupFailure === undefined) {
-    const settlement: UnverifiedProcessCapture["settlement"] =
-      capture.settlement.state === "quiesced"
-        ? { ...capture.settlement, cleanup_outcome: "not_required" }
-        : { ...capture.settlement, cleanup_outcome: "cleaned" };
     const completedCapture: UnverifiedProcessCapture = {
       ...capture,
-      settlement,
+      ...settleCapturedProcesses(capture, cleanupOutcome),
       cleanup: {
         owned_process_group: "verified",
         temporary_root: "removed",

@@ -469,8 +469,19 @@ it("retains unrelated withheld processes through cleanup, capture, and JSON", as
       ...previousCleanup,
       unverified_processes: unverified,
     });
+    // The fixture settled quiesced, so the signaled cleanup is reported.
+    expect(capture.settlement).toMatchObject({
+      state: "quiesced",
+      cleanup_outcome: "cleaned",
+    });
     expect(capture.residual_unknowns).toEqual([
       ...original.residual_unknowns,
+      {
+        scope: "process",
+        reason: expect.stringContaining(
+          "Cleanup terminated token-owned processes",
+        ),
+      },
       {
         scope: "process",
         reason: expect.stringContaining("900 could not be verified"),

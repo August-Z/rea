@@ -418,7 +418,7 @@ it("rejects settlement and cleanup combinations that cannot occur", () => {
       settlement: {
         state: "quiesced",
         elapsed_ms: 0,
-        cleanup_outcome: "cleaned",
+        cleanup_outcome: "failed",
       },
     }),
   ).toThrow("cleanup_outcome");
@@ -432,6 +432,20 @@ it("rejects settlement and cleanup combinations that cannot occur", () => {
       },
     }),
   ).toThrow("cleanup_outcome");
+});
+
+it("accepts cleanup of run-token processes that outlived a quiesced tree", () => {
+  const capture = emptyCapture();
+  expect(
+    parseProcessCapture({
+      ...capture,
+      settlement: {
+        state: "quiesced",
+        elapsed_ms: 0,
+        cleanup_outcome: "cleaned",
+      },
+    }).settlement,
+  ).toEqual({ state: "quiesced", elapsed_ms: 0, cleanup_outcome: "cleaned" });
 });
 
 it("rejects finalization evidence that no deadline could have produced", () => {
