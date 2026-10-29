@@ -40,6 +40,51 @@ process.stdin.on("data", (chunk) => {
 );
 
 it.skipIf(process.platform === "win32")(
+  "names the frame-limit stop on later commands and in session status",
+  async () => {
+    const provider = await makeProvider(
+      `process.stdout.write("\\0");
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => {
+  input += chunk;
+  for (;;) {
+    const end = input.indexOf("\\n");
+    if (end < 0) break;
+    const line = input.slice(0, end); input = input.slice(end + 1);
+    if (line === "many") process.stdout.write(Array.from({ length: 4100 }, (_, i) => "frame" + i + "\\0").join(""));
+    else if (line.startsWith("!echo ")) process.stdout.write(line.slice(6) + "\\0");
+  }
+});`,
+    );
+    const { manager, sessionId } = await start(provider, {
+      frameTimeoutMs: 1000,
+    });
+    expect(manager.status(sessionId)?.stop_reason).toBeUndefined();
+    expect((await manager.execute(sessionId, "many")).ok).toBe(true);
+
+    const status = manager.status(sessionId);
+    expect(status?.state).toBe("closed");
+    // The unsolicited-frame queue overflows before the command frame limit;
+    // the later frame-limit failure must not replace that first cause.
+    const stopReason =
+      "Rizin produced unsolicited frames exceeding the bounded queue limit of 4096 frames or 4194304 bytes. This release has no runtime override.";
+    expect(status?.stop_reason).toBe(stopReason);
+    const refused = await manager.execute(sessionId, "dr");
+    expect(refused.ok).toBe(false);
+    if (!refused.ok)
+      expect(refused.error).toMatchObject({
+        _tag: "AnalysisCapabilityUnavailableError",
+        reason: stopReason,
+        retryable: false,
+        userMessage: `Rizin debug session ${sessionId} was stopped and no longer accepts commands: ${stopReason}`,
+        remediationAction: expect.stringContaining("close_rizin_debug_session"),
+      });
+    expect(manager.status(sessionId)?.stop_reason).toBe(stopReason);
+  },
+);
+
+it.skipIf(process.platform === "win32")(
   "returns partial evidence when the command frame deadline is already expired",
   async () => {
     const provider = await makeProvider(
