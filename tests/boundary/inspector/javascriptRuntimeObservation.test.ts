@@ -765,6 +765,41 @@ describe("passive V8 Inspector evidence", () => {
   });
 });
 
+test("matches a Node V8 target entry file against a static JavaScript asset", () => {
+  const root = "/Applications/Example.app/Contents/Resources/app";
+  const observation = runtimeObservation(
+    `${root}/renderer.js`,
+    `${root}/renderer.js`,
+  );
+  const runtimeEvidence = createJavaScriptRuntimeObservationEvidence(
+    "observe_javascript_runtime",
+    {
+      inspector_endpoint: "http://127.0.0.1:9229",
+      target_id: "example-v8-target",
+      runtime_kind: "node",
+      observation_ms: 100,
+    },
+    {
+      ...observation,
+      target: { ...observation.target, runtime_kind: "node" },
+    },
+    V8_INSPECTOR_PROVIDER_IDENTITY,
+  );
+  const reconciled = reconcileJavaScriptRuntimeEvidence({
+    static_layers: JAVASCRIPT_RUNTIME_RECONCILIATION_EXAMPLE.static_layers,
+    runtime_observations: [runtimeEvidence],
+  });
+  if (!reconciled.ok) throw reconciled.error;
+  const result = javascriptRuntimeReconciliationResultSchema.parse(
+    reconciled.value.normalized_result,
+  );
+  expect(
+    result.reconciliations.filter(
+      ({ entity_kind }) => entity_kind === "target",
+    ),
+  ).toEqual([expect.objectContaining({ status: "matched" })]);
+});
+
 test("keeps Inspector parse failures separate and preserves file URL script identity through reconciliation", async () => {
   const fixture = await runtimeFixture();
   const firstUrl = `${pathToFileURL(fixture.entry).href}?instance=1#first`;

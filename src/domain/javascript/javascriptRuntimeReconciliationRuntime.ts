@@ -94,7 +94,7 @@ const targetEntity = (
     frameKey: null,
     scriptKey: null,
     location,
-    staticKind: "renderer",
+    staticKind: targetStaticKind(capture),
     sourceSha256: null,
     label: target.title,
     properties: {
@@ -111,6 +111,18 @@ const targetEntity = (
     section: "target",
   });
 };
+
+/**
+ * A V8 Inspector "node" target is a Node or Electron main process whose
+ * location is its entry script, so it matches static JavaScript, not pages.
+ * The protocol type comes from Inspector itself, not the declared role.
+ */
+const targetStaticKind = (
+  capture: ParsedRuntimeCapture,
+): RuntimeReconciliationEntity["staticKind"] =>
+  capture.kind === "v8-inspector" && capture.inspection.target.type === "node"
+    ? "javascript"
+    : "renderer";
 
 const frameEntities = (
   capture: ParsedRuntimeCapture,

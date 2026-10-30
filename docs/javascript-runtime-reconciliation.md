@@ -91,7 +91,11 @@ coverage. It does not print captured source text.
 ## Matching rules
 
 Runtime targets, frames, scripts, and workers become capture-scoped graph
-nodes. REA evaluates compatible static candidates conservatively:
+nodes. Page targets and frames are compared with static renderer candidates.
+A V8 Inspector target whose protocol type is `node` is a Node or Electron main
+process located at its entry script, so it is compared with static JavaScript
+candidates, as scripts are. REA evaluates compatible static candidates
+conservatively:
 
 1. A captured-source SHA-256 plus one matching mapped location yields
    a content-and-location match.
