@@ -241,8 +241,10 @@ mode, and Electron's default warning behave as they would without capture.
 Every occurrence is recorded within the retention budget. A rejection that
 Node raises as an exception in throw or strict mode is recorded once, as an
 `unhandled-rejection`; an `uncaughtException` that Electron emits directly is
-also recorded. An application that later replaces `process.emit` or decorates
-`EventEmitter.prototype.emit` is not seen by the pass-through.
+also recorded. The pass-through calls the `emit` captured at startup: an
+application that later decorates `EventEmitter.prototype.emit` does not observe
+process events through that decoration, and one that replaces `process.emit`
+without delegating to the previous value is not observed.
 
 If native wrapper creation or registration-method lookup could expose private
 instrumentation through an application getter, setter or Proxy, registration

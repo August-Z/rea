@@ -3382,7 +3382,7 @@ it.each([
   {
     name: "a directly emitted uncaughtException",
     nodeArguments: [],
-    trigger: `${appHandlesExceptions}\nprocess.emit("uncaughtException", new Error("probe-emit"), "uncaughtException");`,
+    trigger: `${appHandlesExceptions}\nprocess.emit("uncaughtException", new Error("probe-emit"));`,
     expected: { code: 0, rejections: 0, exceptions: 1 },
   },
 ])(
