@@ -232,6 +232,15 @@ native dispatch keep their original receiver and argument-list object; opaque
 methods produce a `custom-call` or `custom-apply` observation gap when callback
 execution cannot be established.
 
+Main-process `uncaught-exception` and `unhandled-rejection` timeline entries
+are observed without registering `uncaughtException` or `unhandledRejection`
+listeners, which would replace the runtime's own handling. The hook uses the
+`uncaughtExceptionMonitor` event and a pass-through `process.emit`, so an
+application's own handlers, Node's `--unhandled-rejections` mode, and
+Electron's default warning behave as they would without capture. A rejection
+that Node raises as an exception in throw mode is recorded once, as an
+`unhandled-rejection`.
+
 If native wrapper creation or registration-method lookup could expose private
 instrumentation through an application getter, setter or Proxy, registration
 stays native and unwrapped. The `once-metadata` observation gap identifies that

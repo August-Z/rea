@@ -3324,6 +3324,72 @@ it("preserves fatal process termination after recording uncaught exceptions", as
   expect(result.stderr).toContain("fatal-hook-secret");
 });
 
+const lifecycleProbe = (trigger: string) => `
+const recorded = (event) =>
+  globalThis.__reaElectronActiveSnapshot().events.filter(
+    (entry) => entry.kind === "process-lifecycle" && entry.event === event,
+  ).length;
+${trigger}
+setTimeout(() => {
+  process.stdout.write(JSON.stringify({
+    rejections: recorded("unhandled-rejection"),
+    exceptions: recorded("uncaught-exception"),
+  }) + "\\n");
+}, 50);
+`;
+
+it.each([
+  {
+    name: "an application unhandledRejection listener",
+    nodeArguments: [],
+    trigger:
+      'process.on("unhandledRejection", () => process.stderr.write("app-handled\\n"));\nPromise.reject(new Error("probe-reject"));\nPromise.reject(new Error("probe-reject-again"));',
+    expected: { rejections: 2, exceptions: 0 },
+  },
+  {
+    name: "warn-mode unhandled rejections",
+    nodeArguments: ["--unhandled-rejections=warn"],
+    trigger: 'Promise.reject(new Error("probe-reject"));',
+    expected: { rejections: 1, exceptions: 0 },
+  },
+  {
+    name: "an application uncaughtException listener",
+    nodeArguments: [],
+    trigger:
+      'process.on("uncaughtException", () => process.stderr.write("app-handled\\n"));\nsetImmediate(() => { throw new Error("probe-throw"); });',
+    expected: { rejections: 0, exceptions: 1 },
+  },
+])(
+  "records process failures without overriding $name",
+  async ({ nodeArguments, trigger, expected }) => {
+    const root = await createTestTempDirectory("rea-electron-hook-lifecycle-");
+    temporary.push(root);
+    await writeElectronFixture(root);
+    const script = join(root, "lifecycle.cjs");
+    await writeFile(script, lifecycleProbe(trigger));
+    const result = await runNode(script, root, undefined, nodeArguments);
+
+    expect(result.code, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual(expected);
+  },
+);
+
+it("keeps default unhandled rejections fatal after recording them", async () => {
+  const root = await createTestTempDirectory("rea-electron-hook-lifecycle-");
+  temporary.push(root);
+  await writeElectronFixture(root);
+  const script = join(root, "lifecycle.cjs");
+  await writeFile(
+    script,
+    lifecycleProbe('Promise.reject(new Error("fatal-reject-secret"));'),
+  );
+  const result = await runNode(script, root);
+
+  expect(result.code).not.toBe(0);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("fatal-reject-secret");
+});
+
 const writeElectronFixture = async (
   root: string,
   source = electronModuleSource,
@@ -3359,6 +3425,7 @@ const runNode = async (
   script: string,
   root: string,
   sourceHook?: string,
+  nodeArguments: readonly string[] = [],
 ): Promise<{
   readonly code: number | null;
   readonly stdout: string;
@@ -3366,11 +3433,15 @@ const runNode = async (
 }> => {
   const hook = await stageHook(root, sourceHook);
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ["-r", hook, script], {
-      cwd: root,
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const child = spawn(
+      process.execPath,
+      [...nodeArguments, "-r", hook, script],
+      {
+        cwd: root,
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));

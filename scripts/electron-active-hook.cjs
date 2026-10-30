@@ -1267,20 +1267,7 @@ try {
   boundaries.patchApplicationEffects(electron.app);
   boundaries.patchNativeAddonLoading();
   boundaries.patchChildProcess();
-  process.once("uncaughtException", (cause, origin) => {
-    recordRuntime("process-lifecycle", "uncaught-exception", "observed", {
-      argument_shape_values: [cause, origin],
-      error: true,
-    });
-    throw cause;
-  });
-  process.once("unhandledRejection", (reason, promise) => {
-    recordRuntime("process-lifecycle", "unhandled-rejection", "observed", {
-      argument_shape_values: [reason, promise],
-      error: true,
-    });
-    throw reason;
-  });
+  observeProcessFailures();
 } catch (cause) {
   globalThis.__reaElectronActiveHookError = true;
   recordRuntime(
@@ -1292,6 +1279,37 @@ try {
       error: true,
     },
   );
+}
+
+// Observe process failures without adding listeners that would change how the
+// runtime or the application handles them. A failure listener replaces the
+// default handling (warn, throw, or Electron's own), so the hook only uses the
+// exception monitor and a pass-through view of the rejection emit.
+function observeProcessFailures() {
+  process.on("uncaughtExceptionMonitor", (cause, origin) => {
+    // Node raises an unhandled rejection in throw mode as an exception with
+    // this origin; the rejection itself is recorded below.
+    if (origin === "unhandledRejection") return;
+    recordRuntime("process-lifecycle", "uncaught-exception", "observed", {
+      argument_shape_values: [cause, origin],
+      error: true,
+    });
+  });
+  const processEmit = process.emit;
+  if (typeof processEmit !== "function") return;
+  defineProperty(process, "emit", {
+    configurable: true,
+    enumerable: false,
+    writable: true,
+    value: function emit(event, ...args) {
+      if (event === "unhandledRejection")
+        recordRuntime("process-lifecycle", "unhandled-rejection", "observed", {
+          argument_shape_values: [args[0], args[1]],
+          error: true,
+        });
+      return applyFunction(processEmit, this, [event, ...args]);
+    },
+  });
 }
 
 // Never expose retained buffers to application iterators or array constructors.
