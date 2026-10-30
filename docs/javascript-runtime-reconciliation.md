@@ -91,7 +91,7 @@ coverage. It does not print captured source text.
 ## Matching rules
 
 Runtime targets, frames, scripts, and workers become capture-scoped graph
-nodes. Page targets and frames are compared with static renderer candidates.
+nodes. Other targets and frames are compared with static renderer candidates.
 A V8 Inspector target whose protocol type is `node` is a Node or Electron main
 process located at its entry script, so it is compared with static JavaScript
 candidates, as scripts are. REA evaluates compatible static candidates
@@ -134,7 +134,8 @@ Static JavaScript assets, chunks, and modules receive a separate load-state
 classification:
 
 - `loaded` means an accepted runtime script correspondence was found, using
-  exact bytes or one unique mapped location;
+  exact bytes or one unique mapped location; a located V8 `node` target counts
+  as a correspondence for its entry script;
 - `resident-in-loaded-asset` means a containing asset was observed, but the
   embedded module was not independently observed or shown to execute;
 - `not-observed-in-capture` means the entity did not appear in the complete

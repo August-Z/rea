@@ -793,11 +793,22 @@ test("matches a Node V8 target entry file against a static JavaScript asset", ()
   const result = javascriptRuntimeReconciliationResultSchema.parse(
     reconciled.value.normalized_result,
   );
-  expect(
-    result.reconciliations.filter(
-      ({ entity_kind }) => entity_kind === "target",
-    ),
-  ).toEqual([expect.objectContaining({ status: "matched" })]);
+  const byKind = (kind: string) =>
+    result.reconciliations.filter(({ entity_kind }) => entity_kind === kind);
+  const [script] = byKind("script");
+  expect(script).toMatchObject({ status: "matched" });
+  expect(byKind("target")).toEqual([
+    expect.objectContaining({
+      status: "matched",
+      basis: "artifact-path",
+      reason: "unique-location-match",
+      candidate_static_count: 1,
+      static_node_id:
+        script !== undefined && "static_node_id" in script
+          ? script.static_node_id
+          : "missing",
+    }),
+  ]);
 });
 
 test("keeps Inspector parse failures separate and preserves file URL script identity through reconciliation", async () => {
