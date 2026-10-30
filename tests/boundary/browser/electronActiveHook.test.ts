@@ -3329,14 +3329,17 @@ const recorded = (event) =>
   globalThis.__reaElectronActiveSnapshot().events.filter(
     (entry) => entry.kind === "process-lifecycle" && entry.event === event,
   ).length;
-${trigger}
-setTimeout(() => {
+process.on("exit", () => {
   process.stdout.write(JSON.stringify({
     rejections: recorded("unhandled-rejection"),
     exceptions: recorded("uncaught-exception"),
   }) + "\\n");
-}, 50);
+});
+${trigger}
 `;
+
+const appHandlesExceptions =
+  'process.on("uncaughtException", () => process.stderr.write("app-handled\\n"));';
 
 it.each([
   {
@@ -3344,20 +3347,43 @@ it.each([
     nodeArguments: [],
     trigger:
       'process.on("unhandledRejection", () => process.stderr.write("app-handled\\n"));\nPromise.reject(new Error("probe-reject"));\nPromise.reject(new Error("probe-reject-again"));',
-    expected: { rejections: 2, exceptions: 0 },
+    expected: { code: 0, rejections: 2, exceptions: 0 },
   },
   {
     name: "warn-mode unhandled rejections",
     nodeArguments: ["--unhandled-rejections=warn"],
     trigger: 'Promise.reject(new Error("probe-reject"));',
-    expected: { rejections: 1, exceptions: 0 },
+    expected: { code: 0, rejections: 1, exceptions: 0 },
+  },
+  {
+    name: "Electron's warn-with-error-code rejection mode",
+    nodeArguments: ["--unhandled-rejections=warn-with-error-code"],
+    trigger: 'Promise.reject(new Error("probe-reject"));',
+    expected: { code: 1, rejections: 1, exceptions: 0 },
+  },
+  {
+    name: "throw-mode rejections handled as exceptions",
+    nodeArguments: [],
+    trigger: `${appHandlesExceptions}\nPromise.reject(new Error("probe-reject"));`,
+    expected: { code: 0, rejections: 1, exceptions: 0 },
+  },
+  {
+    name: "strict-mode rejections handled as exceptions",
+    nodeArguments: ["--unhandled-rejections=strict"],
+    trigger: `${appHandlesExceptions}\nPromise.reject(new Error("probe-reject"));`,
+    expected: { code: 0, rejections: 1, exceptions: 0 },
   },
   {
     name: "an application uncaughtException listener",
     nodeArguments: [],
-    trigger:
-      'process.on("uncaughtException", () => process.stderr.write("app-handled\\n"));\nsetImmediate(() => { throw new Error("probe-throw"); });',
-    expected: { rejections: 0, exceptions: 1 },
+    trigger: `${appHandlesExceptions}\nsetImmediate(() => { throw new Error("probe-throw"); });`,
+    expected: { code: 0, rejections: 0, exceptions: 1 },
+  },
+  {
+    name: "a directly emitted uncaughtException",
+    nodeArguments: [],
+    trigger: `${appHandlesExceptions}\nprocess.emit("uncaughtException", new Error("probe-emit"), "uncaughtException");`,
+    expected: { code: 0, rejections: 0, exceptions: 1 },
   },
 ])(
   "records process failures without overriding $name",
@@ -3369,12 +3395,15 @@ it.each([
     await writeFile(script, lifecycleProbe(trigger));
     const result = await runNode(script, root, undefined, nodeArguments);
 
-    expect(result.code, result.stderr).toBe(0);
-    expect(JSON.parse(result.stdout.trim())).toEqual(expected);
+    expect(result.code, result.stderr).toBe(expected.code);
+    expect(JSON.parse(result.stdout.trim())).toEqual({
+      rejections: expected.rejections,
+      exceptions: expected.exceptions,
+    });
   },
 );
 
-it("keeps default unhandled rejections fatal after recording them", async () => {
+it("records default unhandled rejections and keeps them fatal", async () => {
   const root = await createTestTempDirectory("rea-electron-hook-lifecycle-");
   temporary.push(root);
   await writeElectronFixture(root);
@@ -3386,8 +3415,11 @@ it("keeps default unhandled rejections fatal after recording them", async () => 
   const result = await runNode(script, root);
 
   expect(result.code).not.toBe(0);
-  expect(result.stdout).toBe("");
   expect(result.stderr).toContain("fatal-reject-secret");
+  expect(JSON.parse(result.stdout.trim())).toEqual({
+    rejections: 1,
+    exceptions: 0,
+  });
 });
 
 const writeElectronFixture = async (

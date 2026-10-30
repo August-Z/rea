@@ -1286,14 +1286,20 @@ try {
 // default handling (warn, throw, or Electron's own), so the hook only uses the
 // exception monitor and a pass-through view of the rejection emit.
 function observeProcessFailures() {
-  process.on("uncaughtExceptionMonitor", (cause, origin) => {
-    // Node raises an unhandled rejection in throw mode as an exception with
-    // this origin; the rejection itself is recorded below.
-    if (origin === "unhandledRejection") return;
+  const recordException = (cause, origin) =>
     recordRuntime("process-lifecycle", "uncaught-exception", "observed", {
       argument_shape_values: [cause, origin],
       error: true,
     });
+  // Node dispatches the monitor and then uncaughtException for one failure;
+  // remember the monitored value so the second dispatch is not recorded again.
+  let monitored = { pending: false, cause: undefined };
+  process.on("uncaughtExceptionMonitor", (cause, origin) => {
+    // In throw or strict mode Node also raises an unhandled rejection as an
+    // exception with this origin; the rejection itself is recorded below.
+    if (origin === "unhandledRejection") return;
+    monitored = { pending: true, cause };
+    recordException(cause, origin);
   });
   const processEmit = process.emit;
   if (typeof processEmit !== "function") return;
@@ -1307,6 +1313,15 @@ function observeProcessFailures() {
           argument_shape_values: [args[0], args[1]],
           error: true,
         });
+      else if (event === "uncaughtException") {
+        // Electron emits this directly for some startup failures, without
+        // the monitor.
+        const alreadyRecorded =
+          monitored.pending && monitored.cause === args[0];
+        monitored = { pending: false, cause: undefined };
+        if (!alreadyRecorded && args[1] !== "unhandledRejection")
+          recordException(args[0], args[1]);
+      }
       return applyFunction(processEmit, this, [event, ...args]);
     },
   });

@@ -235,11 +235,14 @@ execution cannot be established.
 Main-process `uncaught-exception` and `unhandled-rejection` timeline entries
 are observed without registering `uncaughtException` or `unhandledRejection`
 listeners, which would replace the runtime's own handling. The hook uses the
-`uncaughtExceptionMonitor` event and a pass-through `process.emit`, so an
-application's own handlers, Node's `--unhandled-rejections` mode, and
-Electron's default warning behave as they would without capture. A rejection
-that Node raises as an exception in throw mode is recorded once, as an
-`unhandled-rejection`.
+`uncaughtExceptionMonitor` event and a pass-through `process.emit` installed at
+startup, so an application's own handlers, Node's `--unhandled-rejections`
+mode, and Electron's default warning behave as they would without capture.
+Every occurrence is recorded within the retention budget. A rejection that
+Node raises as an exception in throw or strict mode is recorded once, as an
+`unhandled-rejection`; an `uncaughtException` that Electron emits directly is
+also recorded. An application that later replaces `process.emit` or decorates
+`EventEmitter.prototype.emit` is not seen by the pass-through.
 
 If native wrapper creation or registration-method lookup could expose private
 instrumentation through an application getter, setter or Proxy, registration
