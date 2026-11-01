@@ -109,6 +109,35 @@ const estimateXmlPlistExpansion = (
 };
 
 /**
+ * Index of the "]" closing a DOCTYPE internal subset that declares nothing:
+ * only whitespace and comments, which cannot define or expand an entity.
+ * Any other markup or text leaves the subset to the expansion refusal.
+ */
+const inertInternalSubsetEnd = (
+  xml: string,
+  from: number,
+): number | undefined => {
+  let index = from;
+  while (index < xml.length) {
+    const character = xml[index];
+    if (character === "]") return index;
+    if (
+      character === " " ||
+      character === "\t" ||
+      character === "\n" ||
+      character === "\r"
+    )
+      index += 1;
+    else if (xml.startsWith("<!--", index)) {
+      const end = xml.indexOf("-->", index + 4);
+      if (end < 0) return undefined;
+      index = end + 3;
+    } else return undefined;
+  }
+  return undefined;
+};
+
+/**
  * Consume each XML span once; malformed tokens cannot restart suffix scans.
  * Each token reports the DOM node it creates (none for an end tag), whether
  * character data, which becomes a text node, precedes it, and the references
@@ -186,7 +215,12 @@ function* xmlPreflightTokens(xml: string): Generator<{
       } else if (character === '"' || character === "'") quote = character;
       else if (character === ">") break;
       else if (character === "=") attributes += 1;
-      else if (doctype && character === "[") internalSubset = true;
+      else if (doctype && !internalSubset && character === "[") {
+        // One failed scan per declaration keeps hostile input linear.
+        const close = inertInternalSubsetEnd(xml, end + 1);
+        if (close === undefined) internalSubset = true;
+        else end = close;
+      }
     }
     if (end === xml.length) return;
     cursor = end + 1;

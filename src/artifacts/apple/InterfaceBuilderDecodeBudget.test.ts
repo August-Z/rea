@@ -74,7 +74,17 @@ const inertDeclarations = [
     xml: archive("Build", `<!-- ${example} -->`),
     title: "Build",
   },
-] as const;
+  ...["[]", "[ \n\t]", "[<!-- no declarations -->]", "[ <!-- ] > --> ]"].map(
+    (subset) => ({
+      kind: `DOCTYPE internal subset ${subset}`,
+      xml: archive("Build").replace(
+        "<plist",
+        `<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd" ${subset}><plist`,
+      ),
+      title: "Build",
+    }),
+  ),
+];
 
 describe("inert XML declaration examples in Interface Builder archives", () => {
   it.each(inertDeclarations)(
@@ -118,25 +128,33 @@ describe("inert XML declaration examples in Interface Builder archives", () => {
     },
   );
 
-  it("continues to refuse an actual internal entity declaration before decoding", () => {
-    const xml = archive("&harmless;").replace(
-      "<plist",
-      '<!DOCTYPE plist [<!ENTITY harmless "value">]><plist',
-    );
-    expect(() =>
-      preflightPropertyListDecode(
-        Buffer.from(xml),
-        16 * 1024 * 1024,
-        undefined,
-        {
-          budget: "the aggregate Interface Builder decode budget",
-          fail: interfaceBuilderDecodeBudgetFailure,
-        },
-      ),
-    ).toThrow(
-      "XML plist internal entity expansion exceeds the aggregate Interface Builder decode budget",
-    );
-  });
+  it.each([
+    ['[<!ENTITY harmless "value">]', "&harmless;"],
+    ['[ <!-- before --> <!ENTITY harmless "value">]', "&harmless;"],
+    ['[] [<!ENTITY harmless "value">]', "&harmless;"],
+    ['[<!ENTITY unused "value">]', "Build"],
+  ])(
+    "continues to refuse an internal subset declaration before decoding: %s",
+    (subset, title) => {
+      const xml = archive(title).replace(
+        "<plist",
+        `<!DOCTYPE plist ${subset}><plist`,
+      );
+      expect(() =>
+        preflightPropertyListDecode(
+          Buffer.from(xml),
+          16 * 1024 * 1024,
+          undefined,
+          {
+            budget: "the aggregate Interface Builder decode budget",
+            fail: interfaceBuilderDecodeBudgetFailure,
+          },
+        ),
+      ).toThrow(
+        "XML plist internal entity expansion exceeds the aggregate Interface Builder decode budget",
+      );
+    },
+  );
 
   it("does not mistake a bracket in a quoted external identifier for an internal subset", () => {
     const xml = archive("Build").replace(
