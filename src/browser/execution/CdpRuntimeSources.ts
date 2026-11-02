@@ -175,8 +175,9 @@ export class CdpRuntimeSources {
         source_map_url: script?.sourceMapURL ?? null,
         has_source_url: script?.hasSourceURL ?? null,
         language: script?.scriptLanguage ?? null,
+        // A negative reported column locates no position in the resource.
         resource_start:
-          script !== undefined
+          script !== undefined && script.startColumn >= 0
             ? {
                 line_number: script.startLine,
                 column_number: script.startColumn,

@@ -31,9 +31,11 @@ export const runtimeScriptParsedSchema = scriptDeclaration.extend({
   scriptId: z.string().min(1),
   executionContextId: integer,
   startLine: integer,
-  startColumn: integer,
+  // Chrome can report a negative column for an inline script, such as one in
+  // a cross-origin-isolated helper frame. Admit it; it locates no position.
+  startColumn: z.int(),
   endLine: integer,
-  endColumn: integer,
+  endColumn: z.int(),
   hash: z.string().optional(),
   sourceMapURL: z.string().optional(),
   hasSourceURL: z.boolean().optional(),

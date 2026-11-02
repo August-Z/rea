@@ -217,3 +217,75 @@ describe("runtime collector failure and uncertain source metadata", () => {
     ).toBe(false);
   });
 });
+
+describe("runtime scripts with negative reported columns", () => {
+  it("keeps observing when CDP reports a negative script column", async () => {
+    const browser = await startRuntimeBrowser();
+    onTestFinished(() => browser.close());
+    // Chrome 156 reported this inline script in a WordPress helper frame.
+    const script = {
+      scriptId: "negative-column-script",
+      url: `${browser.endpoint}/empty.html?cross-origin-isolated=1`,
+      executionContextId: 999,
+      startLine: 21,
+      startColumn: -60,
+      endLine: 21,
+      endColumn: -15,
+    };
+    const result = await new CdpWebRuntimeProvider().observeExecution(
+      observeWebExecutionInputSchema.parse({
+        cdp_endpoint: browser.endpoint,
+        target_id: "allowed-page",
+        observation_ms: 30,
+      }),
+      {
+        progress: {
+          report: async (update) => {
+            if (update.completed !== 1) return;
+            browser.emitEvent({
+              method: "Debugger.scriptParsed",
+              params: script,
+              sessionId: "session-1",
+            });
+            browser.emitEvent({
+              method: "Network.requestWillBeSent",
+              sessionId: "session-1",
+              params: {
+                requestId: "negative-column-request",
+                frameId: "runtime-main",
+                timestamp: 12,
+                request: { url: `${browser.endpoint}/request`, method: "GET" },
+                initiator: {
+                  type: "script",
+                  stack: {
+                    callFrames: [
+                      {
+                        scriptId: script.scriptId,
+                        url: script.url,
+                        functionName: "",
+                        lineNumber: 21,
+                        columnNumber: 3,
+                      },
+                    ],
+                  },
+                },
+              },
+            });
+          },
+        },
+      },
+    );
+    if (!result.ok) throw result.error;
+    // A negative column locates no position, so the script start is unknown.
+    expect(
+      result.value.sources.find(
+        ({ script_id }) => script_id === script.scriptId,
+      ),
+    ).toMatchObject({
+      url: script.url,
+      execution_context_id: 999,
+      resource_start: null,
+      source: { state: "excluded" },
+    });
+  });
+});
