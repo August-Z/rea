@@ -25,7 +25,18 @@ it.each([
     '<template><base href="decoy/"><script src="decoy.js"></script></template>',
     [],
   ],
+  // SVG scripts load from href, then legacy xlink:href, and ignore src.
   ['<svg><script src="decoy.js"></script></svg>', []],
+  ['<svg><script href="actual.js"></script></svg>', ["actual.js"]],
+  ['<svg><script xlink:href="actual.js"></script></svg>', ["actual.js"]],
+  [
+    '<svg><script href="actual.js" xlink:href="decoy.js"></script></svg>',
+    ["actual.js"],
+  ],
+  ['<svg><script href="" xlink:href="decoy.js"></script></svg>', []],
+  ['<svg><script data-href="decoy.js"></script></svg>', []],
+  ['<template><svg><script href="decoy.js"></script></svg></template>', []],
+  ['<script href="decoy.js"></script>', []],
   [
     '<svg><foreignObject><script src="actual.js"></script></foreignObject></svg>',
     ["actual.js"],
@@ -106,7 +117,30 @@ it.each([
   ['<script language="vbscript">run()</script>', []],
   ["<!-- <script>run();</script> -->", []],
   ["<template><script>run();</script></template>", []],
-  ["<svg><script>run();</script></svg>", []],
+  ["<template><svg><script>run();</script></svg></template>", []],
+  ["<svg><script>run();</script></svg>", ["classic"]],
+  ["<SVG><SCRIPT>run();</SCRIPT></SVG>", ["classic"]],
+  ['<svg><script type="MODULE">import "./x.js";</script></svg>', ["module"]],
+  ['<svg><script type=" Text/JavaScript ">run();</script></svg>', ["classic"]],
+  ['<svg><script type=" module ">import "./x.js";</script></svg>', []],
+  ['<svg><script type="text/javascript;x=1">run();</script></svg>', []],
+  ['<svg><script type="application/json">{"a":1}</script></svg>', []],
+  [
+    '<svg><script xlink:type="application/json">run();</script></svg>',
+    ["classic"],
+  ],
+  // An SVG src is not a source, but any href means the body is ignored.
+  ['<svg><script src="decoy.js">run();</script></svg>', ["classic"]],
+  ['<svg><script href="actual.js">run();</script></svg>', []],
+  ['<svg><script href="">run();</script></svg>', []],
+  ['<svg><script xlink:href="actual.js">run();</script></svg>', []],
+  // The HTML-only language attribute neither enables nor disables SVG scripts.
+  ['<svg><script language="vbscript">run();</script></svg>', ["classic"]],
+  ["<svg><script><![CDATA[run();]]></script></svg>", ["classic"]],
+  [
+    "<svg><foreignObject><script>run();</script></foreignObject></svg>",
+    ["classic"],
+  ],
 ])("classifies inline JavaScript in %s", (text, expected) => {
   expect(
     htmlArtifactReferences(text).inlineScripts.map(
@@ -132,6 +166,25 @@ it("retains exact inline script body coordinates, including unclosed scripts", (
       location: { start: { line: 2, column: 8 }, end: { line: 4, column: 0 } },
     },
   ]);
+});
+
+it("retains SVG inline script body coordinates", () => {
+  const prefix = "<!doctype html>\n<svg><script>";
+  const text = `${prefix}window.__reaMarker = "ran";</script></svg>`;
+  expect(htmlArtifactReferences(text)).toEqual({
+    baseHref: null,
+    scripts: [],
+    inlineScriptCount: 1,
+    inlineScripts: [
+      {
+        scriptType: "classic",
+        location: {
+          start: { line: 2, column: "<svg><script>".length },
+          end: { line: 2, column: text.indexOf("</script>") - 16 },
+        },
+      },
+    ],
+  });
 });
 
 it("counts every inline body but retains bounded locations", () => {
