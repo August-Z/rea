@@ -197,6 +197,10 @@ distinction: it closes and deletes provider-owned profiles, but only disconnects
 from an external CDP browser. Real-browser verification checks both outcomes and
 confirms that an attached external browser remains alive.
 
+Launch mode requests Chromium's own sandbox. Set `REA_BROWSER_NO_SANDBOX=true`
+only when the host cannot run it, for example as root in a container; Termux on
+Android always launches without it. Neither setting is an REA security boundary.
+
 CDP connections leave Playwright's default-context overrides disabled. The
 selected page receives the declared scenario environment and temporary focus
 emulation, so actions can complete while that page is in the background.

@@ -894,6 +894,12 @@ export const openPlaywrightScenarioBrowser = async (
           handleSIGINT: false,
           handleSIGTERM: false,
           timeout: commandTimeoutMs,
+          // Playwright adds --no-sandbox unless the sandbox is requested.
+          // REA_BROWSER_NO_SANDBOX=true is the explicit opt-out for hosts that
+          // cannot run it.
+          chromiumSandbox:
+            process.platform !== "android" &&
+            environment.REA_BROWSER_NO_SANDBOX !== "true",
           // Termux's Chromium cannot create its renderer process through Android's
           // executable boundary. Single-process mode keeps the browser and page in
           // the Termux-launched process so scenario navigation remains available.

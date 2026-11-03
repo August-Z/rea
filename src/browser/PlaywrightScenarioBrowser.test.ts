@@ -141,6 +141,46 @@ it.skipIf(process.platform === "win32")(
   },
 );
 
+it.skipIf(process.platform === "android").each([
+  [{}, true],
+  [{ REA_BROWSER_NO_SANDBOX: "false" }, true],
+  [{ REA_BROWSER_NO_SANDBOX: "true" }, false],
+])(
+  "requests the Chromium sandbox for launched scenarios unless opted out (%o)",
+  async (environment, sandboxed) => {
+    let launchOptions:
+      | Parameters<
+          typeof import("playwright-core").chromium.launchPersistentContext
+        >[1]
+      | undefined;
+    const scenario = browserScenarioSchema.parse({
+      browser: { mode: "launch", executable_path: process.execPath },
+      start_url: { url: "https://example.test" },
+      actions: [
+        { step_id: "settle", action: "wait_for_timeout", duration_ms: 1 },
+      ],
+    });
+    await expect(
+      openPlaywrightScenarioBrowser(scenario, environment, {
+        launcher: {
+          connectOverCDP: async () => {
+            throw new Error("Unexpected connection");
+          },
+          launchPersistentContext: async (_profile, options) => {
+            launchOptions = options;
+            throw new Error("launch boundary reached");
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      diagnostics: { startup_error: "launch boundary reached" },
+    });
+    expect(launchOptions?.chromiumSandbox).toBe(sandboxed);
+    expect(launchOptions?.args).toEqual([]);
+    expect(launchOptions?.env).not.toHaveProperty("REA_BROWSER_NO_SANDBOX");
+  },
+);
+
 it("keeps Termux execution support when launching Chromium on Android", async () => {
   Object.defineProperty(process, "platform", { value: "android" });
   vi.stubEnv("PREFIX", "/data/data/com.termux/files/usr");
@@ -173,6 +213,7 @@ it("keeps Termux execution support when launching Chromium on Android", async ()
   });
 
   expect(launchOptions?.args).toEqual(["--no-sandbox", "--single-process"]);
+  expect(launchOptions?.chromiumSandbox).toBe(false);
   expect(launchOptions?.env).toEqual({
     LANG: "selected-language",
     LD_PRELOAD: "/data/data/com.termux/files/usr/lib/libtermux-exec.so",

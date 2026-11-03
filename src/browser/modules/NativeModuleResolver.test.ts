@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { NativeModuleResolver } from "./NativeModuleResolver.js";
+import {
+  NativeModuleResolver,
+  type ModuleResolverLauncher,
+} from "./NativeModuleResolver.js";
 import { webModuleResolutionObservationSchema } from "../../domain/webModuleTrace.js";
 import { projectAnalysisError } from "../../domain/analysisErrorProjection.js";
 
@@ -216,6 +219,30 @@ describe("optional native resolution acquisition", () => {
       },
     });
   });
+});
+
+describe("native resolution Chromium sandbox", () => {
+  it.each([
+    [{}, true],
+    [{ REA_BROWSER_NO_SANDBOX: "false" }, true],
+    [{ REA_BROWSER_NO_SANDBOX: "true" }, false],
+  ])(
+    "requests the Chromium sandbox unless explicitly opted out (%o)",
+    async (environment, sandboxed) => {
+      let launched: Parameters<ModuleResolverLauncher>[0] | undefined;
+      const provider = new NativeModuleResolver(
+        { REA_BROWSER_EXECUTABLE: "/selected/browser", ...environment },
+        (options) => {
+          launched = options;
+          return Promise.reject(new Error("launch boundary reached"));
+        },
+      );
+      const result = await provider.resolve(input);
+      if (result.ok) throw new Error("expected startup failure");
+      expect(launched?.chromiumSandbox).toBe(sandboxed);
+      expect(launched?.args).not.toContain("--no-sandbox");
+    },
+  );
 });
 
 describe("completed native resolution finalization", () => {

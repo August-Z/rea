@@ -86,8 +86,9 @@ and import map have 32 MiB, 16 MiB and 4 MiB input limits. Native resolution has
 one 20-second deadline; cleanup may extend that deadline. One renderer is
 requested, and there is no aggregate host memory-limit claim. Cancellation
 closes only the owned browser; cleanup failure cannot return a successful trace.
-`REA_BROWSER_NO_SANDBOX=true` passes Chromium's corresponding launch option when
-the host requires it; it does not enable an REA security boundary.
+Native resolution requests Chromium's own sandbox. `REA_BROWSER_NO_SANDBOX=true`
+launches without it when the host requires that; neither setting is an REA
+security boundary.
 
 See [testing](testing.md) for the native loading oracle and CLI/MCP real lane.
 

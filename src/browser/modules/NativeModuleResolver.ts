@@ -196,14 +196,13 @@ export class NativeModuleResolver implements WebModuleResolutionPort {
           handleSIGINT: false,
           handleSIGTERM: false,
           handleSIGHUP: false,
+          // Playwright adds --no-sandbox unless the sandbox is requested.
+          chromiumSandbox: this.environment.REA_BROWSER_NO_SANDBOX !== "true",
           args: [
             "--disable-dev-shm-usage",
             "--disable-background-networking",
             "--renderer-process-limit=1",
             "--js-flags=--max-old-space-size=128",
-            ...(this.environment.REA_BROWSER_NO_SANDBOX === "true"
-              ? ["--no-sandbox"]
-              : []),
           ],
         }),
       );
