@@ -1056,6 +1056,9 @@ not establish complete-capture coverage. Repeating the same workload or
 running provider health diagnostics does not resolve the heap constraint.
 
 Stable regular-file reads reject symlinks, replacement and concurrent changes.
+A refused symlink that currently resolves to a regular file names that file in
+the diagnostic so the caller can select it; the target is not read through the
+symlink.
 Private snapshots, declarations and tool configuration are removed before the
 result returns. Cleanup uncertainty retains the selected capture, resource and
 original failure information. The original capture is never changed.

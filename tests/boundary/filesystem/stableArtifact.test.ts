@@ -1,7 +1,9 @@
 import {
   lstat,
   appendFile,
+  mkdir,
   open,
+  realpath,
   rename,
   symlink,
   unlink,
@@ -48,6 +50,34 @@ it("reads exact binary and empty bytes and rejects symlink/size/cancellation bou
   ).rejects.toMatchObject({
     reason: "cancelled",
     cause: controller.signal.reason,
+  });
+});
+
+it("names the resolved file when a selected symlink is refused", async () => {
+  const root = await createTestTempDirectory("rea-stable-symlink-");
+  const cellar = join(root, "Cellar", "tool", "1.0", "bin");
+  await mkdir(cellar, { recursive: true });
+  const target = join(cellar, "tool");
+  await writeFile(target, Buffer.from([1, 2, 3]));
+  const selected = join(root, "tool");
+  await symlink(target, selected);
+  const resolved = await realpath(target);
+  const failure = await readStableArtifact(selected, 3).then(
+    () => undefined,
+    (cause: unknown) => cause,
+  );
+  expect(failure).toMatchObject({
+    reason: "path",
+    message: `Expected a regular file without a symlink: ${selected}; it resolves to ${resolved}`,
+    userMessage: `Select the resolved file instead of the symlink: ${resolved}`,
+  });
+  // The refusal still holds: the symlink's target is never read through it.
+  const dangling = join(root, "dangling");
+  await symlink(join(root, "missing"), dangling);
+  await expect(readStableArtifact(dangling, 3)).rejects.toMatchObject({
+    reason: "path",
+    message: `Expected a regular file without a symlink: ${dangling}`,
+    userMessage: undefined,
   });
 });
 

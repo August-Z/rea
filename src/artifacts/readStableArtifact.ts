@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, type BigIntStats } from "node:fs";
-import { lstat, open, type FileHandle } from "node:fs/promises";
+import { lstat, open, realpath, stat, type FileHandle } from "node:fs/promises";
 import { sameRegularFileState } from "../filesystem/RegularFile.js";
 import { ArtifactReaderFailure } from "./ArtifactReader.js";
 import type { ArtifactResourceScope } from "./ArtifactResourceScope.js";
@@ -63,6 +63,21 @@ const afterValidation = async <T>(
   }
 };
 
+/**
+ * Name a refused symlink's current regular-file target as a recovery hint.
+ * The target is never read through the symlink; selection stays explicit.
+ */
+const resolvedRegularFile = async (
+  path: string,
+): Promise<string | undefined> => {
+  try {
+    const resolved = await realpath(path);
+    return (await stat(resolved)).isFile() ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /** Read one bounded regular file and reject replacement or in-place changes. */
 export const readStableArtifact = async (
   path: string,
@@ -73,11 +88,23 @@ export const readStableArtifact = async (
 ): Promise<StableArtifactSnapshot> => {
   assertArtifactReadActive(signal);
   const before = await fileSystem.lstat(path);
-  if (!before.isFile() || before.isSymbolicLink())
-    throw new ArtifactReaderFailure(
-      "path",
-      `Expected a regular file without a symlink: ${path}`,
-    );
+  if (!before.isFile() || before.isSymbolicLink()) {
+    const resolved = before.isSymbolicLink()
+      ? await resolvedRegularFile(path)
+      : undefined;
+    throw resolved === undefined
+      ? new ArtifactReaderFailure(
+          "path",
+          `Expected a regular file without a symlink: ${path}`,
+        )
+      : new ArtifactReaderFailure(
+          "path",
+          `Expected a regular file without a symlink: ${path}; it resolves to ${resolved}`,
+          {
+            userMessage: `Select the resolved file instead of the symlink: ${resolved}`,
+          },
+        );
+  }
   const maximumSize = BigInt(maximumBytes);
   if (before.size > maximumSize)
     throw new ArtifactReaderFailure(

@@ -1,4 +1,4 @@
-import { writeFile, symlink } from "node:fs/promises";
+import { realpath, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { GoBinaryProvider } from "../../../src/go/GoBinaryProvider.js";
@@ -131,7 +131,18 @@ it.skipIf(process.platform === "win32")(
     await symlink(original, selected);
     const result = await new GoBinaryProvider().inspect({ path: selected });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toBeInstanceOf(AnalysisInputError);
+    if (result.ok) throw new Error("A selected symlink must be refused");
+    expect(result.error).toBeInstanceOf(AnalysisInputError);
+    // The refusal names the resolved file so the caller can select it.
+    expect(projectAnalysisError(result.error).details).toMatchObject({
+      issues: [
+        {
+          path: ["path"],
+          reason: "invalid_format",
+          message: `Expected a regular file without a symlink: ${selected}; it resolves to ${await realpath(original)}`,
+        },
+      ],
+    });
   },
 );
 
