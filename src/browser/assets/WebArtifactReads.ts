@@ -1,6 +1,9 @@
 import type { WebArtifactAcquisition as Acquisition } from "../../domain/webArtifactAcquisition.js";
 import { z } from "zod";
-import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
+import {
+  ArtifactReaderFailure,
+  artifactPathRemediation,
+} from "../../artifacts/ArtifactReader.js";
 import {
   artifactFileCancellationCause,
   artifactFilePrimaryFacts,
@@ -249,15 +252,20 @@ const selectedFileError = (
   { cause, origin }: ArtifactFilePrimaryFacts,
   context: WebArtifactReadContext,
 ): AnalysisError | undefined => {
-  const selected = (message: string) =>
-    new AnalysisInputError(context.operation, { cause }, [
+  const selected = (
+    message: string,
+    remediation: ReturnType<typeof artifactPathRemediation> = {},
+  ) =>
+    new AnalysisInputError(context.operation, { cause, ...remediation }, [
       { path: context.field, reason: "invalid_value", message },
     ]);
   if (
     origin === "owned-or-classified" &&
     cause instanceof ArtifactReaderFailure
   )
-    return cause.reason === "path" ? selected(cause.message) : undefined;
+    return cause.reason === "path"
+      ? selected(cause.message, artifactPathRemediation(cause))
+      : undefined;
   const code =
     cause instanceof Error && "code" in cause ? String(cause.code) : "";
   if (code === "EACCES" || code === "EPERM")

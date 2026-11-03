@@ -4,7 +4,10 @@ import {
 } from "../../artifacts/StableArtifactFailure.js";
 import { isSelectedRegularFileError } from "../../filesystem/RegularFile.js";
 import { fixedNativeAllowance } from "../../domain/native/nativeDeadlines.js";
-import { ArtifactReaderFailure } from "../../artifacts/ArtifactReader.js";
+import {
+  ArtifactReaderFailure,
+  artifactPathRemediation,
+} from "../../artifacts/ArtifactReader.js";
 import { readStableArtifact } from "../../artifacts/readStableArtifact.js";
 import {
   artifactFilePrimaryFacts,
@@ -165,13 +168,17 @@ const peResourcesFailurePrimary = (
       );
     }
     if (cause.reason === "path" || cause.reason === "format")
-      return new AnalysisInputError(operation, { cause }, [
-        {
-          path: ["path"],
-          reason: "invalid_format",
-          message: cause.message,
-        },
-      ]);
+      return new AnalysisInputError(
+        operation,
+        { cause, ...artifactPathRemediation(cause) },
+        [
+          {
+            path: ["path"],
+            reason: "invalid_format",
+            message: cause.message,
+          },
+        ],
+      );
   }
 
   if (cause instanceof Error && "code" in cause) {

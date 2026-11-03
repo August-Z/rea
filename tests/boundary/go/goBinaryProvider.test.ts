@@ -134,15 +134,22 @@ it.skipIf(process.platform === "win32")(
     if (result.ok) throw new Error("A selected symlink must be refused");
     expect(result.error).toBeInstanceOf(AnalysisInputError);
     // The refusal names the resolved file so the caller can select it.
-    expect(projectAnalysisError(result.error).details).toMatchObject({
+    const resolved = await realpath(original);
+    const projected = projectAnalysisError(result.error);
+    expect(projected.details).toMatchObject({
       issues: [
         {
           path: ["path"],
           reason: "invalid_format",
-          message: `Expected a regular file without a symlink: ${selected}; it resolves to ${await realpath(original)}`,
+          message: `Expected a regular file without a symlink: ${selected}; it resolves to ${resolved}`,
         },
       ],
     });
+    expect(projected.message).toContain(`it resolves to ${resolved}`);
+    expect(projected.remediation.action).toBe(
+      `Select the resolved file instead of the symlink: ${resolved}`,
+    );
+    expect(projected.recovery).toBeUndefined();
   },
 );
 

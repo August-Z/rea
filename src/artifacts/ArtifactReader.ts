@@ -346,6 +346,26 @@ export class ArtifactReaderFailure extends Error {
   }
 }
 
+/**
+ * Caller-facing correction for a refused selected path, when the reader
+ * knows one (a symlink that resolves to a regular file). The selected path
+ * satisfies the input schema, so re-reading it cannot fix the refusal.
+ */
+export const artifactPathRemediation = (
+  cause: ArtifactReaderFailure,
+): {
+  readonly userMessage?: string;
+  readonly remediationAction?: string;
+  readonly conformsToInputContract?: boolean;
+} =>
+  cause.reason === "path" && cause.userMessage !== undefined
+    ? {
+        userMessage: cause.message,
+        remediationAction: cause.userMessage,
+        conformsToInputContract: true,
+      }
+    : {};
+
 /** Fixed reader input ceilings share producer-owned recovery across CLI and MCP. */
 export const artifactFixedLimitFailure = (
   name: string,
