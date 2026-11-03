@@ -33,13 +33,9 @@ import type {
 } from "../../domain/webModuleTrace.js";
 import { webModuleResolutionSchema } from "../../domain/webModuleTrace.js";
 import { ProviderStartupDeadline } from "../../process/ProviderDeadline.js";
-import { chromiumSandboxRemediation } from "../ChromiumSandboxFailure.js";
+import { chromiumSandboxRemediationOptions } from "../ChromiumSandboxFailure.js";
 
 const OPERATION = "trace_web_module_imports";
-const sandboxRemediation = (cause: unknown) => {
-  const remediationAction = chromiumSandboxRemediation(cause);
-  return remediationAction === undefined ? {} : { remediationAction };
-};
 const TIMEOUT_MS = 20000;
 const reportSchema = z.strictObject({
   importer_url: z.string(),
@@ -244,7 +240,7 @@ export class NativeModuleResolver implements WebModuleResolutionPort {
             ? cause
             : new ProviderAdapterError("native-module-resolver", OPERATION, {
                 cause,
-                ...sandboxRemediation(cause),
+                ...chromiumSandboxRemediationOptions(cause),
                 diagnostics: {
                   executable,
                   error_message:
