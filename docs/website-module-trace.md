@@ -87,8 +87,8 @@ one 20-second deadline; cleanup may extend that deadline. One renderer is
 requested, and there is no aggregate host memory-limit claim. Cancellation
 closes only the owned browser; cleanup failure cannot return a successful trace.
 Native resolution requests Chromium's own sandbox. `REA_BROWSER_NO_SANDBOX=true`
-launches without it when the host requires that; neither setting is an REA
-security boundary.
+launches without it when the host requires that, and a sandbox startup failure
+names it in the remediation; neither setting is an REA security boundary.
 
 See [testing](testing.md) for the native loading oracle and CLI/MCP real lane.
 

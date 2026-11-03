@@ -181,6 +181,48 @@ it.skipIf(process.platform === "android").each([
   },
 );
 
+it.each([
+  [
+    "browserType.launch: Target page, context or browser has been closed\n[pid=1][err] [1:1:FATAL:zygote_host_impl_linux.cc(132)] No usable sandbox! Update your kernel or see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md\nChromium sandboxing failed!",
+    true,
+  ],
+  ["launch boundary reached", false],
+])(
+  "names the REA sandbox opt-out only for a Chromium sandbox startup failure (%#)",
+  async (startupError, namesOptOut) => {
+    const scenario = browserScenarioSchema.parse({
+      browser: { mode: "launch", executable_path: process.execPath },
+      start_url: { url: "https://example.test" },
+      actions: [
+        { step_id: "settle", action: "wait_for_timeout", duration_ms: 1 },
+      ],
+    });
+    const failure: unknown = await openPlaywrightScenarioBrowser(
+      scenario,
+      {},
+      {
+        launcher: {
+          connectOverCDP: async () => {
+            throw new Error("Unexpected connection");
+          },
+          launchPersistentContext: async () => {
+            throw new Error(startupError);
+          },
+        },
+      },
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    if (!(failure instanceof AnalysisError)) throw failure;
+    expect(
+      projectAnalysisError(failure).remediation.action.includes(
+        "REA_BROWSER_NO_SANDBOX=true",
+      ),
+    ).toBe(namesOptOut);
+  },
+);
+
 it("keeps Termux execution support when launching Chromium on Android", async () => {
   Object.defineProperty(process, "platform", { value: "android" });
   vi.stubEnv("PREFIX", "/data/data/com.termux/files/usr");

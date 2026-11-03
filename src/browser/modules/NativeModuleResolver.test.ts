@@ -245,6 +245,36 @@ describe("native resolution Chromium sandbox", () => {
   );
 });
 
+describe("native resolution Chromium sandbox failure", () => {
+  it("names the REA opt-out when Chromium cannot start its sandbox", async () => {
+    const provider = new NativeModuleResolver(
+      { REA_BROWSER_EXECUTABLE: "/selected/browser" },
+      () =>
+        Promise.reject(
+          new Error(
+            "browserType.launch: Target page, context or browser has been closed\n[pid=1][err] [1:1:FATAL:zygote_host_impl_linux.cc(132)] No usable sandbox! Update your kernel or see https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md\nChromium sandboxing failed!",
+          ),
+        ),
+    );
+    const result = await provider.resolve(input);
+    if (result.ok) throw new Error("expected startup failure");
+    expect(projectAnalysisError(result.error).remediation.action).toContain(
+      "REA_BROWSER_NO_SANDBOX=true",
+    );
+  });
+  it("keeps the generic recovery for other startup failures", async () => {
+    const provider = new NativeModuleResolver(
+      { REA_BROWSER_EXECUTABLE: "/selected/browser" },
+      () => Promise.reject(new Error("spawn EACCES fixture")),
+    );
+    const result = await provider.resolve(input);
+    if (result.ok) throw new Error("expected startup failure");
+    expect(projectAnalysisError(result.error).remediation.action).not.toContain(
+      "REA_BROWSER_NO_SANDBOX",
+    );
+  });
+});
+
 describe("completed native resolution finalization", () => {
   it.each([false, true])(
     "retains the completed batch when final close is cancelled (close fails: %s)",

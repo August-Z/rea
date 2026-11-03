@@ -199,7 +199,9 @@ confirms that an attached external browser remains alive.
 
 Launch mode requests Chromium's own sandbox. Set `REA_BROWSER_NO_SANDBOX=true`
 only when the host cannot run it, for example as root in a container; Termux on
-Android always launches without it. Neither setting is an REA security boundary.
+Android always launches without it. A launch that fails because the sandbox
+cannot start names this opt-out in its remediation. Neither setting is an REA
+security boundary.
 
 CDP connections leave Playwright's default-context overrides disabled. The
 selected page receives the declared scenario environment and temporary focus

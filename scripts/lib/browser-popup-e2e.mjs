@@ -162,6 +162,9 @@ const verifyTransports = async (executable, origin) => {
     PATH: process.env.PATH ?? "/usr/bin:/bin",
     REA_LOG_LEVEL: "silent",
     HOPPER_LAUNCHER_PATH: "/rea-unconfigured-deep-provider/hopper",
+    ...(process.env.REA_BROWSER_NO_SANDBOX === undefined
+      ? {}
+      : { REA_BROWSER_NO_SANDBOX: process.env.REA_BROWSER_NO_SANDBOX }),
   };
   const { stdout } = await promisify(execFile)(
     process.execPath,

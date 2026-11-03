@@ -1,4 +1,5 @@
 import { PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY } from "./providerIdentities.js";
+import { chromiumSandboxRemediation } from "./ChromiumSandboxFailure.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import {
@@ -930,6 +931,7 @@ export const openPlaywrightScenarioBrowser = async (
               cause,
               userMessage: "The selected browser could not start.",
               remediationAction:
+                chromiumSandboxRemediation(cause) ??
                 "Review the selected executable and startup diagnostics, then correct the launch configuration before retrying.",
               diagnostics: {
                 executable_path: executablePath,
