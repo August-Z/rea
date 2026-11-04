@@ -424,3 +424,36 @@ itWithCaptureCapability.each([false, true])(
     });
   },
 );
+
+itWithCaptureCapability(
+  "keeps input and argv literals that name no selected path when paths are normalized",
+  async () => {
+    const root = await createTestTempDirectory("rea-process-absent-root-");
+    const literal = "<no-temporary-root>";
+    const scenario = processScenarioSchema.parse({
+      executable: process.execPath,
+      working_directory: root,
+      arguments: [
+        "-e",
+        "process.stdin.once('data',()=>setTimeout(()=>process.exit(0),400));setTimeout(()=>process.exit(2),4000)",
+        literal,
+      ],
+      timeout_ms: 5000,
+      settle_ms: 100,
+      events: [{ type: "input", at_ms: 300, data: `x ${literal} y\n` }],
+      normalization: { paths: true, pids: false, ports: false, patterns: [] },
+    });
+    const result = await captureProcessScenario(scenario);
+    if (!result.ok) throw result.error;
+    const capture = result.value;
+    expect(capture.exit).toMatchObject({ code: 0, reason: "exited" });
+    expect(capture.interaction_events[0]?.data).toBe(`x ${literal} y\n`);
+    const sample = capture.process_samples.find(({ command }) =>
+      command.includes(" -e "),
+    );
+    if (sample === undefined)
+      throw new Error("Expected an argv-bearing process sample");
+    expect(sample.command.startsWith("<executable> ")).toBe(true);
+    expect(sample.command.endsWith(` ${literal}`)).toBe(true);
+  },
+);

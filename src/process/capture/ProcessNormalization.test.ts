@@ -665,3 +665,31 @@ it("shares sampled identifiers before custom patterns in terminal and command no
     "root=selected child=selected other=201",
   );
 });
+
+it("keeps a literal that names no selected path in sampled commands", () => {
+  const declared = processScenarioSchema.parse({
+    executable: "/opt/tool/bin/program",
+    working_directory: "/work",
+    normalization: { paths: true, pids: false, ports: false, patterns: [] },
+  });
+  const [sample] = normalizeProcessSamples(
+    [
+      {
+        at_ms: 0,
+        pid: rootPid,
+        parent_pid: 1,
+        process_group_id: rootPid,
+        session_id: rootPid,
+        command: "/opt/tool/bin/program <no-temporary-root> /work/log",
+      },
+    ],
+    declared,
+    rootPid,
+  );
+  expect(sample?.command).toBe(
+    "<executable> <no-temporary-root> <working-directory>/log",
+  );
+  expect(
+    normalizeProcessText("x <no-temporary-root> y", declared, undefined, -1),
+  ).toBe("x <no-temporary-root> y");
+});

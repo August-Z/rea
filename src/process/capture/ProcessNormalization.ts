@@ -231,7 +231,7 @@ export const createProcessIdentifierLookup = (
 /** Compile one ordered policy for both bounded retention and unrestricted text. */
 const createProcessTextRules = (
   scenario: ProcessScenario,
-  temporaryRoot: string,
+  temporaryRoot: string | undefined,
   pid: ProcessIdentifierSource,
 ): (() => readonly (ProcessTextRule | undefined)[]) => {
   const rules: (ProcessTextRule | undefined)[] = [];
@@ -278,7 +278,7 @@ const createProcessTextRules = (
 /** Prepare capture-local matchers while retaining a live terminal PID lookup. */
 export const createProcessTextNormalizer = (
   scenario: ProcessScenario,
-  temporaryRoot: string,
+  temporaryRoot: string | undefined,
   pid: ProcessIdentifierSource,
 ): ((value: string) => string) => {
   const rules = createProcessTextRules(scenario, temporaryRoot, pid);
@@ -339,7 +339,7 @@ export const createBoundedProcessTextNormalizer = (
 export const normalizeProcessText = (
   value: string,
   scenario: ProcessScenario,
-  temporaryRoot: string,
+  temporaryRoot: string | undefined,
   pid: number,
 ): string => createProcessTextNormalizer(scenario, temporaryRoot, pid)(value);
 
@@ -352,16 +352,22 @@ const directoryIdentity = (path: string): string => {
   return identity;
 };
 
-/** Match original paths once, preferring the most specific selected identity. */
+/**
+ * Match original paths once, preferring the most specific selected identity.
+ * Projections without a capture temporary root pass `undefined`; no text then
+ * aliases to `<temporary-root>`.
+ */
 const createPathRule = (
   scenario: ProcessScenario,
-  temporaryRoot: string,
+  temporaryRoot: string | undefined,
 ):
   | { readonly matcher: RegExp; readonly replace: RegexReplacement }
   | undefined => {
   const aliases = new Map<string, string>();
   const selected: readonly (readonly [string, string])[] = [
-    [temporaryRoot, "<temporary-root>"],
+    ...(temporaryRoot === undefined
+      ? []
+      : [[temporaryRoot, "<temporary-root>"] as const]),
     [directoryIdentity(scenario.working_directory), "<working-directory>"],
     [scenario.executable, "<executable>"],
     ...scenario.filesystem_observation_paths.map(
@@ -429,7 +435,7 @@ export const normalizeProcessSamples = (
   );
   const normalizeText = createProcessTextNormalizer(
     scenario,
-    "<no-temporary-root>",
+    undefined,
     identifiers,
   );
   const normalizeCommand = (command: string): string =>
