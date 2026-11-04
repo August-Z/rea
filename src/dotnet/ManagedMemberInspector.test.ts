@@ -12,6 +12,7 @@ import {
   type ManagedMetadataLayout,
 } from "./ManagedMetadataLayout.js";
 import { readManagedPeLayout } from "./ManagedPeReader.js";
+import { readTypeDefinitionRowFacts } from "./ManagedTypeDefinitionRows.js";
 import { memberListIndexSize } from "./ManagedMemberPointers.js";
 import { edges } from "./ManagedMemberRows.js";
 import { parseUserStrings } from "./ManagedUserStrings.js";
@@ -2260,6 +2261,52 @@ describe("managed TypeDef list ordering", () => {
         }),
       ],
     });
+  });
+
+  it("leaves ownership unknown when valid list starts decrease across an invalid row", () => {
+    const bytes = buildManagedPeFixture({ additionalEmptyTypes: 2 });
+    const pe = readManagedPeLayout(bytes);
+    if (pe.cli === null) throw new Error("fixture has no CLI header");
+    const { rva, size } = pe.cli.metadata;
+    const layout = readManagedMetadataLayout(
+      bytes,
+      pe.rvaToOffset(rva, size, "cli.metadata"),
+      size,
+    );
+    for (const [index, start] of [2, 0, 1].entries()) {
+      const row = readTypeDefinitionRowFacts(bytes, layout, index + 1);
+      bytes.writeUInt16LE(start, row.fieldListOffset);
+      bytes.writeUInt16LE(start, row.methodListOffset);
+    }
+
+    const result = inspectManagedMembersBytes(
+      bytes,
+      managedPeFixtureTarget(bytes),
+    );
+
+    const unknown = { first_row: null, last_row: null, count: 0 };
+    expect(result.types[2]).toMatchObject({
+      full_name: "Fixture.Program",
+      field_list: unknown,
+      method_list: unknown,
+    });
+    expect(result.fields).toMatchObject([
+      { name: "counter", declaring_type: null, declaring_type_token: null },
+    ]);
+    expect(result.methods).toMatchObject([
+      { name: "Main", declaring_type: null, declaring_type_token: null },
+    ]);
+    expect(result.coverage.state).toBe("partial");
+    expect(
+      result.coverage.issues.map(({ scope, detail }) => ({ scope, detail })),
+    ).toEqual(
+      expect.arrayContaining(
+        ["FieldList", "MethodList"].map((name) => ({
+          scope: "metadata.TypeDef:0x02000003",
+          detail: `TypeDef ${name} start 1 decreases from preceding valid start 2 in TypeDef 0x02000001; adjacent member ranges are unknown`,
+        })),
+      ),
+    );
   });
 
   it("accepts the one-based start for an empty ordinary member table", () => {

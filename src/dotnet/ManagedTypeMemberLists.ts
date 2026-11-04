@@ -94,30 +94,39 @@ export const readTypeMemberListFacts = (
   }
   const nonmonotonicFields = new Set<number>();
   const nonmonotonicMethods = new Set<number>();
-  for (let index = 0; index + 1 < rows.length; index += 1) {
-    const current = rows[index];
-    const next = rows[index + 1];
-    if (current === undefined || next === undefined) continue;
-    for (const [name, before, after, affected] of [
-      ["FieldList", current.field, next.field, nonmonotonicFields],
-      ["MethodList", current.method, next.method, nonmonotonicMethods],
-    ] as const)
-      if (
-        before.value !== null &&
-        after.value !== null &&
-        after.value < before.value
-      ) {
+  // Compare each valid start with the closest preceding valid start. An
+  // invalid row between them cannot restore order, so a decrease across it is
+  // as provable as an adjacent one.
+  type ValidStart = {
+    readonly index: number;
+    readonly value: number;
+    readonly raw: number;
+  };
+  const previous: { FieldList?: ValidStart; MethodList?: ValidStart } = {};
+  for (const [index, entry] of rows.entries())
+    for (const [name, after, affected] of [
+      ["FieldList", entry.field, nonmonotonicFields],
+      ["MethodList", entry.method, nonmonotonicMethods],
+    ] as const) {
+      if (after.value === null) continue;
+      const before = previous[name];
+      if (before !== undefined && after.value < before.value) {
         managedDecodeBudget(layout).reserve(512, after.offset);
+        affected.add(before.index);
         affected.add(index);
-        affected.add(index + 1);
+        const preceding =
+          before.index + 1 === index
+            ? `preceding start ${String(before.raw)}`
+            : `preceding valid start ${String(before.raw)} in TypeDef ${metadataToken(2, before.index + 1)}`;
         issues.push({
           code: "invalid-row",
-          scope: `metadata.TypeDef:${metadataToken(2, index + 2)}`,
+          scope: `metadata.TypeDef:${metadataToken(2, index + 1)}`,
           offset: after.offset,
-          detail: `TypeDef ${name} start ${String(after.raw)} decreases from preceding start ${String(before.raw)}; adjacent member ranges are unknown`,
+          detail: `TypeDef ${name} start ${String(after.raw)} decreases from ${preceding}; adjacent member ranges are unknown`,
         });
       }
-  }
+      previous[name] = { index, value: after.value, raw: after.raw };
+    }
   const entries: TypeMemberListEntry[] = rows.map((entry, index) => {
     const next = rows[index + 1];
     return {
