@@ -32,4 +32,14 @@ it("parses a file that spreads a self-recursive call result and reads its member
   );
   expect(result.statistics.parsed_javascript_files).toBe(1);
   expect(JSON.stringify(result)).not.toContain("Maximum call stack");
+  // The bounded read stays visible as limited coverage, not a complete parse.
+  const asset = result.graph.nodes.find(
+    (node) => node.kind === "javascript-asset",
+  );
+  expect(asset?.observations[0]?.properties).toMatchObject({
+    parse_status: "partial",
+    analysis_coverage: {
+      examination: { status: "limited", electron_call_paths_limited: true },
+    },
+  });
 });
