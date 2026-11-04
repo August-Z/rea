@@ -954,3 +954,19 @@ it("keeps a possibly repeated factory's native descriptor value unknown", () => 
   })();`);
   expect(value.kind).toBe("unknown");
 });
+
+it("bounds reads through a spread of a self-recursive call result", () => {
+  const { resolver, values } = inspectFixture(`
+    function f(o) {
+      const stay = f(o);
+      return { ...stay, c: stay.sc.startsWith("k") };
+    }
+    inspect(f({}));
+  `);
+  const [returned] = values;
+  if (returned === undefined) throw new Error("inspect call result missing");
+  expect(resolver.property(returned, "sc").kind).toBe("unknown");
+  expect(resolver.members(returned)).toContain("c");
+  expect(resolver.unknownMembers(returned)).toBeGreaterThan(0);
+  expect(resolver.truncated).toBe(true);
+});

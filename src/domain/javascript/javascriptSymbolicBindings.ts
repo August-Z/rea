@@ -320,9 +320,29 @@ export class JavaScriptSymbolicBindings {
     active.add(key);
     this.#propertyActive.set(value, active);
     try {
-      return this.#propertyValue(value, key, read);
+      return this.#nested(symbolicUnknown("symbolic resource limit"), () =>
+        this.#propertyValue(value, key, read),
+      );
     } finally {
       active.delete(key);
+    }
+  }
+
+  /**
+   * Bound reads that re-enter evaluation through lazily evaluated values. A
+   * spread of a recursive call's result yields a fresh value per level, so
+   * identity-based cycle guards never match; the shared depth limit does.
+   */
+  #nested<T>(limited: T, read: () => T): T {
+    if (this.#depth >= 128) {
+      this.truncated = true;
+      return limited;
+    }
+    this.#depth += 1;
+    try {
+      return read();
+    } finally {
+      this.#depth -= 1;
     }
   }
 
@@ -491,7 +511,12 @@ export class JavaScriptSymbolicBindings {
       ...new Set(
         value.node.properties.flatMap((p) =>
           t.isSpreadElement(p)
-            ? this.members(this.evaluate(p.argument, value.environment), active)
+            ? this.#nested([], () =>
+                this.members(
+                  this.evaluate(p.argument, value.environment),
+                  active,
+                ),
+              )
             : [semanticStaticPropertyKey(p.key, p.computed)].filter(
                 (k): k is string =>
                   k !== null && !isObjectPrototypeSetter(p, k),
@@ -532,9 +557,11 @@ export class JavaScriptSymbolicBindings {
       (sum, p) =>
         sum +
         (t.isSpreadElement(p)
-          ? this.unknownMembers(
-              this.evaluate(p.argument, value.environment),
-              new Set(active),
+          ? this.#nested(1, () =>
+              this.unknownMembers(
+                this.evaluate(p.argument, value.environment),
+                new Set(active),
+              ),
             )
           : Number(semanticStaticPropertyKey(p.key, p.computed) === null)),
       0,
